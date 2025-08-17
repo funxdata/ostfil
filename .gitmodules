@@ -1,0 +1,15 @@
+[submodule "crates/libuv"]
+	path = crates/libuv
+	url = https://github.com/libuv/libuv.git
+[submodule "crates/zlib"]
+	path = crates/zlib
+	url = https://github.com/madler/zlib.git
+[submodule "crates/uuid4"]
+	path = crates/uuid4
+	url = https://github.com/rxi/uuid4.git
+[submodule "crates/googletest"]
+	path = crates/googletest
+	url = https://github.com/google/googletest.git
+[submodule "crates/crates/googletest"]
+	path = crates/crates/googletest
+	url = https://github.com/google/googletest.git
