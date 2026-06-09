@@ -33,7 +33,6 @@ jobs:
         run: |
           mkdir upload
           copy target\release\ostfil.dll upload\
-          copy target\release\ostfil.lib upload\
 
       - name: Upload to UpYun S3
         uses: shallwefootball/s3-upload-action@master
