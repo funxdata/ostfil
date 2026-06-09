@@ -1,4 +1,4 @@
-name: LinuxOS
+name: Build LinuxOS
 
 on:
   push:
@@ -18,12 +18,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y \
-            cmake \
-            gcc \
-            libcriterion-dev \
-            pkg-config \
-            jq
+          sudo apt install -y jq
 
       - name: Read version from JSON
         id: version
@@ -31,26 +26,15 @@ jobs:
           echo "project=$(jq -r '.name' dytes.json)" >> $GITHUB_OUTPUT
           echo "version=$(jq -r '.version' dytes.json)" >> $GITHUB_OUTPUT
 
-      - name: Configure CMake
+      - name: Build Release
         run: |
-          mkdir -p build
-          cd build
-          cmake .. -DBUILD_TESTS=ON
-
-      - name: Build
-        run: |
-          cd build
-          make -j$(nproc)
-
-      - name: Run tests
-        run: |
-          cd build
-          ./cyctron_tests
+          cargo build --release
 
       - name: Prepare upload directory
         run: |
           mkdir -p upload
-          cp build/cyctron upload/
+          cp target/release/libostfil.so upload/
+          cp include/ostfil.h upload/
 
       - name: Upload to UpYun S3
         uses: shallwefootball/s3-upload-action@master
@@ -59,6 +43,6 @@ jobs:
           aws_secret_access_key: ${{ secrets.UPYUN_API_SECRET }}
           aws_bucket: ${{ secrets.UPYUN_BUCKET }}
           source_dir: upload
-          destination_dir: core/${{ steps.version.outputs.project }}/${{ steps.version.outputs.version }}/linux
+          destination_dir: system/${{ steps.version.outputs.project }}/${{ steps.version.outputs.version }}/linux
           endpoint: https://s3.api.upyun.com
 
