@@ -1,0 +1,8 @@
+{
+  "name": "ostfil",
+  "version": "1.0.0",
+  "description": "system for file management",
+  "keywords": ["file", "management"],
+  "author": "funxdata",
+  "type": "system"
+}
