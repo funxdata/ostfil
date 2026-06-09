@@ -34,7 +34,6 @@ jobs:
         run: |
           mkdir -p upload
           cp target/release/libostfil.so upload/
-          cp include/ostfil.h upload/
 
       - name: Upload to UpYun S3
         uses: shallwefootball/s3-upload-action@master
