@@ -1,7 +1,5 @@
-
 use std::fs;
 use std::path::Path;
-
 /// 获取文件信息
 pub fn get_info(path: &str) -> Result<String, String> {
     let file_path = Path::new(path).join("info.json");
@@ -24,4 +22,3 @@ pub fn save_info(path: &str, info: &str) -> Result<(), String> {
 
     Ok(())
 }
-
