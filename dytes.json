@@ -4,5 +4,8 @@
   "description": "system for file management",
   "keywords": ["file", "management"],
   "author": "funxdata",
-  "type": "system"
+  "type": "sys",
+  "exports": {
+      "./target/release/ostfil.dll":"libostfil.dll"
+  }
 }
