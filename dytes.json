@@ -1,12 +1,20 @@
 {
   "name": "ostfil",
   "uuid": "0bddf9d9-9a72-43e7-ac64-6e9e39b773be",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "system for file management",
   "keywords": ["file", "management"],
   "author": "funxdata",
   "type": "sys",
-  "exports": {
-      "./target/release/ostfil.dll":"libostfil.dll"
+  "platform-exports": {
+    "windows": {
+      "./target/release/ostfil.dll": "libostfil.dll"
+    },
+    "linux": {
+      "./target/release/libostfil.so": "libostfil.so"
+    },
+    "macos": {
+      "./target/release/libostfil.dylib": "libostfil.dylib"
+    }
   }
 }
