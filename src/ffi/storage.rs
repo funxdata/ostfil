@@ -1,6 +1,7 @@
 use crate::ffi::types::{Ostfil, STORAGE_DIR};
 use crate::utils::cjson::{write_error, write_success};
 use crate::utils::info::save_info;
+use crate::utils::md::compute_md5;
 use crate::utils::pack::do_pack;
 use serde::Deserialize;
 use serde_json::json;
@@ -74,13 +75,20 @@ pub extern "C" fn post_storage(json_in: *const c_char, json_out: *mut c_char) ->
         return write_error(json_out, 500102, &format!("compression failed: {}", e));
     }
 
+    let md5 = match compute_md5(&original_path) {
+        Ok(md5) => md5,
+        Err(e) => return write_error(json_out, 500104, &format!("failed to compute md5: {}", e)),
+    };
+    let content_type = content_type_for(&extra);
+
     // 创建 Ostfil 结构体
     let ostfil = Ostfil {
         uuid: uuid.clone(),
         size,
         extra,
         end_time: chrono::Utc::now().timestamp() as u64,
-        md5: "".to_string(),
+        md5,
+        content_type,
     };
 
     // 写入 info.json（使用 utils::info::save_info）
@@ -97,4 +105,25 @@ pub extern "C" fn post_storage(json_in: *const c_char, json_out: *mut c_char) ->
 
     // 返回结果
     write_success(json_out, "success", json!(ostfil))
+}
+
+
+/// 按扩展名返回基础 MIME 类型；未知类型返回 application/octet-stream。
+pub fn content_type_for(extra: &str) -> String {
+    match extra.to_ascii_lowercase().as_str() {
+        "txt" | "md" | "log" => "text/plain",
+        "json" => "application/json",
+        "html" | "htm" => "text/html",
+        "css" => "text/css",
+        "js" => "application/javascript",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "pdf" => "application/pdf",
+        "zip" => "application/zip",
+        _ => "application/octet-stream",
+    }
+    .to_string()
 }

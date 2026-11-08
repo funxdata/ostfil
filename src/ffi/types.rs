@@ -7,6 +7,8 @@ pub struct Ostfil {
     pub extra: String,
     pub end_time: u64,
     pub md5: String,
+    #[serde(default)]
+    pub content_type: String,
 }
 
 pub const STORAGE_DIR: &str = "./storage";

@@ -68,6 +68,16 @@ pub extern "C" fn post_get_fil(json_in: *const c_char, json_out: *mut c_char) ->
         }
     }
 
+    // 兼容旧 info.json：补齐 md5 / content_type
+    if ostfil.content_type.is_empty() {
+        ostfil.content_type = crate::ffi::storage::content_type_for(&ostfil.extra);
+    }
+    if ostfil.md5.is_empty() && original_path.exists() {
+        if let Ok(md5) = crate::utils::md::compute_md5(&original_path) {
+            ostfil.md5 = md5;
+        }
+    }
+
     // 返回更新后的 Ostfil
     write_success(json_out, "success", json!(ostfil))
 }

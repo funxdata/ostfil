@@ -1,6 +1,6 @@
 [package]
 name = "ostfil"
-version = "0.1.0"
+version = "1.0.3"
 edition = "2021"
 
 # 核心：指定编译为 动态库 + C ABI 兼容
@@ -18,3 +18,4 @@ serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 serde_json = "1.0"
 uuid = { version = "1.23.2", features = ["v4"] }
+md5 = "0.7"
