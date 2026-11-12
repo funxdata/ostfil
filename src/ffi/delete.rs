@@ -10,8 +10,14 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
+/// 删除一个文件及其元数据。
+///
+/// # Safety
+///
+/// `json_in` 必须是 NUL 结尾的有效 C 字符串；`json_out` 必须为空指针，
+/// 或指向至少 65536 字节的可写缓冲区。
 #[unsafe(no_mangle)]
-pub extern "C" fn post_delete_file(json_in: *const c_char, json_out: *mut c_char) -> c_int {
+pub unsafe extern "C" fn post_delete_file(json_in: *const c_char, json_out: *mut c_char) -> c_int {
     if json_in.is_null() {
         return write_err(json_out, JSON_IN_NULL);
     }

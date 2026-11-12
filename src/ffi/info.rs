@@ -12,8 +12,14 @@ use serde_json::json;
 use std::ffi::{c_char, c_int, CStr};
 use std::path::Path;
 
+/// 按 `uuid` 读取元数据，并刷新最后使用时间。
+///
+/// # Safety
+///
+/// `json_in` 必须是 NUL 结尾的有效 C 字符串；`json_out` 必须为空指针，
+/// 或指向至少 65536 字节的可写缓冲区。
 #[unsafe(no_mangle)]
-pub extern "C" fn post_get_fil(json_in: *const c_char, json_out: *mut c_char) -> c_int {
+pub unsafe extern "C" fn post_get_fil(json_in: *const c_char, json_out: *mut c_char) -> c_int {
     if json_in.is_null() {
         return write_err(json_out, JSON_IN_NULL);
     }

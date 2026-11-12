@@ -3,6 +3,12 @@ use serde_json::{json, Value};
 use std::ffi::{c_char, c_int};
 
 /// 写 JSON 到 C buffer
+///
+/// # Safety contract
+///
+/// `json_out` 必须为空指针，或指向至少 65536 字节的可写内存；函数最多写入
+/// 65535 字节 + NUL。调用方（FFI 导出函数）负责保证该前提。
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn write_json_out(json_out: *mut c_char, value: Value) -> c_int {
     let out_str = value.to_string();
     let bytes = out_str.as_bytes();

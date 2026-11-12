@@ -8,6 +8,8 @@ int post_get_fil(const char *json_in, char *json_out);
 int post_delete_file(const char *json_in, char *json_out);
 ```
 
+C ABI 签名保持不变；在 Rust 侧这三个函数声明为 `unsafe extern "C"`，调用方需保证 `json_in` 是 NUL 结尾的有效字符串、`json_out` 容量足够。`json_in` 为空指针、或 `json_out` 为空指针时会返回错误而不是崩溃。
+
 ## 通用约定
 
 ### 输入
