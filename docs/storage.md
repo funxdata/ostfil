@@ -49,6 +49,8 @@ pub const STORAGE_DIR: &str = "./storage";
 
 `content_type` 带 `#[serde(default)]`，因此缺少该字段的旧 `info.json` 仍能反序列化，并在读取时按 `extra` 补齐。
 
+`end_time` 记录最后使用时间：`post_storage` 写入入库时间，`post_get_fil` 每次读取时刷新并写回（写入使用临时文件 + `rename`，避免截断）。
+
 ## 写入流程（post_storage）
 
 1. 校验 `json_in`、UTF-8、JSON、`file_path` 是否存在（`400103`）。
@@ -70,7 +72,7 @@ pub const STORAGE_DIR: &str = "./storage";
 
 1. 校验入参，`uuid` 格式非法 → `400105`；`./storage/<uuid>` 不存在 → `400104`。
 2. 读 `info.json` → 读失败 `500200`，解析失败 `500201`。
-3. 内存中把 `end_time` 刷新为当前时间，**不回写**文件（见 [已知问题](./issues.md) I-08）。
+3. 把 `end_time`（最后使用时间）刷新为当前时间；有变化时随补算字段一起写回 `info.json`。
 4. 若 `original` 不存在，取 `original.z`（不存在则回退旧布局 `original.z.z`）解压还原，失败 `500202`。
 5. 兼容旧记录：`content_type` 为空则按 `extra` 推断；`sha256` 为空且 `original` 存在则补算（同时补 `sampled` / `sample_bytes`）。
 6. 返回 `Ostfil`。

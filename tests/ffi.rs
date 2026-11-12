@@ -171,6 +171,16 @@ fn restores_legacy_original_zz() {
         "应补算 sha256"
     );
 
+    // end_time 与补算字段应写回 info.json
+    let saved: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(dir.join("info.json")).unwrap()).unwrap();
+    assert!(saved["end_time"].as_u64().unwrap() > 0, "end_time 应写回");
+    assert!(
+        !saved["sha256"].as_str().unwrap().is_empty(),
+        "sha256 应写回"
+    );
+    assert_eq!(saved["content_type"], "text/plain");
+
     drop(guard);
     fs::remove_dir_all(&root).expect("清理临时目录");
 }

@@ -71,7 +71,7 @@ int post_delete_file(const char *json_in, char *json_out);
 | `uuid` | string | 存储目录名，v4 UUID |
 | `size` | u64 | 原始文件字节数 |
 | `extra` | string | 扩展名，不含 `.`，取 `Path::extension()` 原样（大小写保留）；无扩展名为 `""` |
-| `end_time` | u64 | Unix 时间戳（秒，UTC）。写入时是入库时间，每次 `post_get_fil` 刷新为最近读取时间 |
+| `end_time` | u64 | 最后使用时间（Unix 时间戳，秒，UTC）。写入时是入库时间，每次 `post_get_fil` 刷新并写回 `info.json` |
 | `sha256` | string | 文件校验摘要，小写十六进制；计算规则见下 |
 | `sampled` | bool | 是否按大文件采样规则计算 |
 | `sample_bytes` | u64 | 采样时首尾各取的字节数（4194304），非采样为 `0` |
@@ -168,7 +168,7 @@ int post_delete_file(const char *json_in, char *json_out);
 
 1. 校验入参，`uuid` 格式非法返回 `400105`；目录不存在返回 `400104`。
 2. 读取 `<uuid>/info.json`（失败 `500200`，内容不是合法 JSON 返回 `500201`）。
-3. 把 `end_time` 刷新为当前 Unix 时间（仅返回内存中的值，**不回写** `info.json`）。
+3. 把 `end_time`（最后使用时间）刷新为当前 Unix 时间；有变化时写回 `info.json`（临时文件 + `rename` 原子替换，写回失败不影响本次返回）。
 4. 若 `original` 不存在，取 `original.z`（缺失时回退旧布局 `original.z.z`）解压还原（失败 `500202`）。
 5. 旧记录兼容：`content_type` 为空时按 `extra` 重新推断；`sha256` 为空且 `original` 存在时重新计算（含 `sampled` / `sample_bytes`）。
 6. 返回 `Ostfil` 对象。

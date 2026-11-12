@@ -61,8 +61,13 @@ pub extern "C" fn post_get_fil(json_in: *const c_char, json_out: *mut c_char) ->
         Err(e) => return write_error(json_out, 500201, &format!("invalid json: {}", e)),
     };
 
-    // 更新 end_time
-    ostfil.end_time = chrono::Utc::now().timestamp() as u64;
+    // 刷新最后使用时间，并记录是否需要在读取后写回
+    let mut dirty = false;
+    let now = chrono::Utc::now().timestamp() as u64;
+    if now > ostfil.end_time {
+        ostfil.end_time = now;
+        dirty = true;
+    }
 
     // 检查 original 是否存在，如果不存在，则解压
     let original_path = uuid_dir.join("original");
@@ -89,12 +94,21 @@ pub extern "C" fn post_get_fil(json_in: *const c_char, json_out: *mut c_char) ->
     // 兼容旧 info.json：补齐 sha256 / content_type
     if ostfil.content_type.is_empty() {
         ostfil.content_type = crate::ffi::storage::content_type_for(&ostfil.extra);
+        dirty = true;
     }
     if ostfil.sha256.is_empty() && original_path.exists() {
         if let Ok(checksum) = crate::utils::checksum::digest_file(&original_path) {
             ostfil.sha256 = checksum.sha256;
             ostfil.sampled = checksum.sampled;
             ostfil.sample_bytes = checksum.sample_bytes;
+            dirty = true;
+        }
+    }
+
+    // 把最后使用时间与补算字段写回；写回失败不影响本次读取结果
+    if dirty {
+        if let Ok(info) = serde_json::to_string_pretty(&ostfil) {
+            let _ = crate::utils::info::save_info(dir_str, &info);
         }
     }
 
