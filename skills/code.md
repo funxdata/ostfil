@@ -52,6 +52,6 @@ pub mod md;
 
 ## 4. 补充
 
-- FFI 边界不得使用 `unwrap()` / `expect()`，避免 panic 越过 `extern "C"` 终止宿主进程（见 `docs/issues.md` I-12）。
+- FFI 边界不得使用 `unwrap()` / `expect()`，避免 panic 越过 `extern "C"` 终止宿主进程。
 - 新增错误码沿用现有分段：`4001xx` 输入/请求，`5001xx` 写入阶段，`5002xx` 读取/删除阶段。
 - `storage/` 布局与 `info.json` 字段属于数据格式，改动需保持旧数据可读，或在读取侧做兼容（参考 `Ostfil.content_type` 的 `#[serde(default)]`）。

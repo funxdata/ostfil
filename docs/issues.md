@@ -1,125 +1,21 @@
 # ostfil 已知问题
 
-> 记录对 `1.0.4` 源码做静态审计时发现的缺陷：现象、影响与修复方向。条目编号固定，修复后更新状态而不是删除条目。
+> 记录对 `1.0.4` 源码做静态审计时发现的缺陷：现象、影响与待讨论的处理方式。
 >
-> 2026-11-12：已修复可直接处理的 10 条、部分修复 2 条，其余 6 条标为「待讨论」，等待产品或接口层面的决定。已修复条目保留原始现象描述，修复内容见各条「说明」。
+> 2026-11-12：可直接修复的条目已修复并从本清单移除；这里保留 2 条部分修复（未完成部分待定）和 6 条待讨论。编号沿用原清单，不重排。
 
 ## 汇总
 
 | 编号 | 问题 | 严重程度 | 状态 |
 | --- | --- | --- | --- |
-| I-01 | `uuid` 未校验，可越出 `storage/` 删除或读取任意目录 | 高 | 已修复 |
-| I-02 | 压缩产物实际为 `original.z.z` | 中 | 已修复 |
-| I-03 | `un_pack` 参数语义错误，解压功能不可用 | 中 | 已修复 |
 | I-04 | `original` 压缩后不删除，磁盘占用翻倍 | 中 | 待讨论 |
 | I-05 | `post_storage` 失败不回滚，且错误响应不带 `uuid` | 中 | 部分修复 |
 | I-06 | 函数返回值不表示业务成败 | 中 | 待讨论 |
-| I-07 | 校验值计算占用大（原 MD5 全量读入），已改为 SHA-256 + 大文件首尾采样 | 中 | 已修复 |
 | I-08 | `end_time` 更新不持久化，字段名与语义不符 | 中 | 待讨论 |
 | I-09 | 存储根目录依赖进程工作目录，无配置入口 | 中 | 待讨论 |
 | I-10 | 无并发控制，非原子写入 | 中 | 部分修复 |
-| I-11 | 没有任何测试 | 中 | 已修复 |
-| I-12 | FFI 边界存在 `unwrap()`，panic 会终止宿主进程 | 中 | 已修复 |
-| I-13 | `file_path` 不校验是否为普通文件 | 低 | 已修复 |
-| I-14 | `size` 吞掉错误，与 0 字节文件不可区分 | 低 | 已修复 |
-| I-15 | 冗余依赖 `libc`、`once_cell` | 低 | 已修复 |
 | I-16 | 输出缓冲区上限 65536 不可协商 | 低 | 待讨论 |
-| I-17 | `content_type` 覆盖范围有限 | 低 | 已修复 |
 | I-18 | 发布流程存在不可达分支，未传 `DYTES_S3_ENDPOINT` | 低 | 待讨论 |
-
----
-
-## I-01 `uuid` 未校验，可越出 `storage/` 删除或读取任意目录
-
-**严重程度**：高 ｜ **状态**：已修复 ｜ **位置**：`src/ffi/types.rs::is_safe_uuid`、`src/ffi/delete.rs::post_delete_file`、`src/ffi/info.rs::post_get_fil`
-
-**说明**：入口校验 36 位 UUID 格式（十六进制 + 连字符），非法返回 `400105`；`../`、绝对路径均被拦截。
-
-### 现象
-
-两个函数都直接用 `Path::new(STORAGE_DIR).join(&req.uuid)` 拼路径，`uuid` 不做任何格式检查：
-
-```rust
-let uuid_dir = Path::new(STORAGE_DIR).join(&req.uuid);
-```
-
-`Path::join` 在参数为绝对路径时会**整体替换**左边，因此：
-
-```json
-{"uuid":"D:/some/dir"}      // Windows：直接指向 D:/some/dir
-{"uuid":"../../important"}  // 相对路径同样可逃逸
-```
-
-`post_delete_file` 随后执行 `fs::remove_dir_all(&uuid_dir)`。
-
-### 影响
-
-宿主若把外部输入（前端、配置、网络）直接透传给 `uuid`，等价于暴露了一个「删除任意目录」的接口；`post_get_fil` 则能读取任意目录下的 `info.json`。属于可被滥用为破坏性操作的安全问题，而不只是健壮性问题。
-
-### 修复方向
-
-在 FFI 入口把 `uuid` 解析为 `Uuid` 类型（`uuid` 依赖已在），或用白名单校验 36 字符、十六进制与连字符；同时断言拼接结果仍以 `STORAGE_DIR` 为前缀。校验失败返回 `4001xx` 新错误码。
-
----
-
-## I-02 压缩产物实际为 `original.z.z`
-
-**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`src/utils/pack.rs::do_pack`、`src/ffi/storage.rs::post_storage`
-
-**说明**：`do_pack` / `un_pack` 统一为 `(src, dst)` 语义，产物固定为 `original.z`。
-
-### 现象
-
-`do_pack(path, save_path)` 内部再次追加 `.z`：
-
-```rust
-let output_file_path = format!("{}.z", save_path);
-```
-
-而调用方传入的 `save_path` 已经是 `original.z`，最终产物是 `original.z.z`，注释与实际行为不符。
-
-### 影响
-
-- `original.z` 永远不会存在；
-- `post_get_fil` 中判断 `compressed_path.exists()`（即 `original.z`）恒为 `false`，与 I-03 一起导致解压链路完全失效；
-- 依赖 `original.z` 命名的外部脚本/清理工具会找不到文件。
-
-### 修复方向
-
-统一「目标路径」语义：`do_pack(src, dst)` 直接写 `dst`，后缀由调用方决定；或让调用方传 `original` 并由函数补 `.z`。修复后同步更新 `docs/storage.md`。
-
----
-
-## I-03 `un_pack` 参数语义错误，解压功能不可用
-
-**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`src/utils/pack.rs::un_pack`、`src/ffi/info.rs::post_get_fil`
-
-**说明**：解压写回 `original`，读取时兼容旧布局 `original.z.z`，由 `restores_legacy_original_zz` 覆盖。
-
-### 现象
-
-`un_pack(path, extra)` 内部把两个参数都当**后缀**使用：
-
-```rust
-let input_file_path = format!("{}.z", path);
-let output_file_path = format!("{}.{}", path, extra);
-```
-
-调用方（`info.rs`）却传入完整路径：
-
-```rust
-un_pack(compressed_path.to_str().unwrap(), original_path.to_str().unwrap())
-```
-
-实际执行时：读取 `.../original.z.z`（恰好是 I-02 的真实产物），写入 `.../original.z../storage/<uuid>/original` —— 目标路径上级目录不存在，`File::create` 失败，返回 `500202`。
-
-### 影响
-
-`original` 被删除或丢失后，无法通过压缩副本恢复，且错误信息只说「decompression failed」。正常流程因 `original` 从不删除（I-04）而不会触发，问题被掩盖。
-
-### 修复方向
-
-同 I-02 一起重构 `do_pack` / `un_pack` 为 `(src_path, dst_path)` 语义，并补一条「删除 `original` 后 `post_get_fil` 能还原」的测试。
 
 ---
 
@@ -139,7 +35,7 @@ un_pack(compressed_path.to_str().unwrap(), original_path.to_str().unwrap())
 
 ### 修复方向
 
-压缩成功后删除 `original`，并依赖 I-02/I-03 修好的解压链路还原；或在 `info.json` 增加 `size_compressed` 字段并保留原文（需明确产品语义）。
+压缩成功后删除 `original`，并依赖现已修好的解压链路还原；或在 `info.json` 增加 `size_compressed` 字段并保留原文（需明确产品语义）。
 
 ---
 
@@ -182,34 +78,6 @@ C 调用方按惯例「0 即成功」，极易把错误当成功；文档已注�
 ### 修复方向
 
 业务错误返回 `code` 本身或统一非 0（如 `1`），并在 `docs/ffi.md` 的返回值表中同步；若要兼容现有调用方，可先加一个 `ostfil_last_error` 之类的查询接口。
-
----
-
-## I-07 校验值计算占用大：原 MD5 全量读入
-
-**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`src/utils/checksum.rs::digest_file`
-
-**说明**：不再使用 MD5，改为与 dytes `FileChecksum` 一致的 SHA-256：`size <= 8 MiB` 计算整文件摘要，超过则取 `size`（u64 小端）+ 首 4 MiB + 尾 4 MiB；`Ostfil` 新增 `sampled` / `sample_bytes` 字段。
-
-### 现象
-
-```rust
-let bytes = fs::read(path)?;
-```
-
-原实现一次性把整个文件读进 `Vec<u8>` 再计算 MD5，没有大小上限。压缩路径是流式的，只有 MD5 不是。
-
-### 影响
-
-`post_storage` 处理数 GB 文件时，进程内存峰值约等于文件大小；在 32 位宿主或内存受限容器中会分配失败甚至被 OOM killer 终止。
-
-### 修复方向
-
-已按 dytes 的校验方案实现（`src/utils/checksum.rs`）：
-
-- 大文件只读首尾各 4 MiB，内存占用固定；
-- `FileChecksum { sha256, size, sampled, sample_bytes }` 的字段与 dytes 一致，便于之后复用其校验逻辑；
-- 旧 `info.json` 中的 `md5` 字段被忽略，读取时按新规则补算 `sha256`。
 
 ---
 
@@ -275,119 +143,6 @@ let bytes = fs::read(path)?;
 
 ---
 
-## I-11 没有任何测试
-
-**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`tests/`
-
-**说明**：新增 `tests/ffi.rs`、`tests/pack.rs` 共 7 个集成测试，`cargo test` 通过。
-
-### 现象
-
-`src/` 中无 `#[cfg(test)]`，仓库无 `tests/` 目录，CI 只做 `cargo build --release`，不跑 `cargo test`。
-
-### 影响
-
-I-02、I-03 这类「编译通过、运行错误」的缺陷无法被发现；后续修 FFI 契约（I-06、I-12）时没有回归保护。
-
-### 修复方向
-
-先补三个最小用例：`pack`/`unpack` 往返、`post_storage` 成功路径、`uuid` 非法输入的拒绝；CI 增加 `cargo test`。
-
----
-
-## I-12 FFI 边界存在 `unwrap()`，panic 会终止宿主进程
-
-**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`src/ffi/storage.rs::post_storage`、`src/ffi/info.rs::post_get_fil`
-
-**说明**：路径转换改为 `let ... else` 返回 `500106`；`src/` 中已无 `unwrap()` / `expect()`。
-
-### 现象
-
-路径转换直接 `to_str().unwrap()`：
-
-```rust
-original_path.to_str().unwrap()
-```
-
-路径按 UTF-8 无损转换失败（非 UTF-8 文件名、部分 Windows 场景）时会 panic。Rust 不允许 unwind 越过 `extern "C"` 边界，会直接 abort，宿主进程随之终止。
-
-### 影响
-
-一个畸形路径就能让宿主（桌面应用、服务）崩溃，而不是返回一个错误码。
-
-### 修复方向
-
-改用 `to_string_lossy()` 或 `Option` 处理并返回错误码；或在每个 FFI 入口包一层 `std::panic::catch_unwind`（注意 `UnwindSafe`），至少保证不会带崩宿主。
-
----
-
-## I-13 `file_path` 不校验是否为普通文件
-
-**严重程度**：低 ｜ **状态**：已修复 ｜ **位置**：`src/ffi/storage.rs::post_storage`
-
-**说明**：增加 `is_file()` 校验，非普通文件返回 `400106`。
-
-### 现象
-
-只检查 `file_path.exists()`。目录、设备文件、符号链接同样通过，随后 `fs::copy` 失败并返回 `500101`「failed to copy file」。
-
-### 影响
-
-错误码与错误信息误导调用方（看起来像磁盘问题）；也可能把 `storage/` 自身作为输入，产生自我复制的副本。
-
-### 修复方向
-
-先 `metadata()` 并检查 `is_file()`，不满足时返回明确的输入错误码；可选限制不得位于 `STORAGE_DIR` 之下。
-
----
-
-## I-14 `size` 吞掉错误，与 0 字节文件不可区分
-
-**严重程度**：低 ｜ **状态**：已修复 ｜ **位置**：`src/ffi/storage.rs::post_storage`
-
-**说明**：元数据读取失败返回 `500105`，不再静默记为 `0`。
-
-### 现象
-
-```rust
-let size = match fs::metadata(file_path) {
-    Ok(meta) => meta.len(),
-    Err(_) => 0,
-};
-```
-
-读取元数据失败被静默转成 `0`。
-
-### 影响
-
-空文件与「拿不到大小」在返回结果中完全相同，宿主无法判断；结合 I-13，输入异常时会写入错误的 `size`。
-
-### 修复方向
-
-失败时返回错误码而非 `0`；或在 `info.json` 增加 `size_known: bool`。
-
----
-
-## I-15 冗余依赖 `libc`、`once_cell`
-
-**严重程度**：低 ｜ **状态**：已修复 ｜ **位置**：`Cargo.toml`
-
-**说明**：移除 `libc`、`once_cell`、`serde_derive`。
-
-### 现象
-
-`src/` 中没有任何 `libc::` 或 `once_cell` 引用；`serde_derive` 与 `serde` 的 `derive` feature 也重复声明。
-
-### 影响
-
-增加编译时间与依赖面，没有功能收益。
-
-### 修复方向
-
-删除 `libc`、`once_cell`；保留 `serde = { version = "1.0", features = ["derive"] }` 并去掉单独的 `serde_derive`。
-
----
-
 ## I-16 输出缓冲区上限 65536 不可协商
 
 **严重程度**：低 ｜ **状态**：待讨论 ｜ **位置**：`src/utils/cjson.rs::write_json_out`
@@ -409,26 +164,6 @@ if bytes.len() >= 65536 { return -2; }
 ### 修复方向
 
 新增 `ostfil_output_size(...)` 或带长度的调用约定；短期可在文档中写明上限的计算依据。
-
----
-
-## I-17 `content_type` 覆盖范围有限
-
-**严重程度**：低 ｜ **状态**：已修复 ｜ **位置**：`src/ffi/storage.rs::content_type_for`
-
-**说明**：映射表扩充到 30+ 扩展名（文本、图片、音视频、字体、压缩包等）。
-
-### 现象
-
-`content_type_for` 只覆盖 12 组扩展名，其余一律 `application/octet-stream`。
-
-### 影响
-
-`csv`、`xml`、`yaml`、`toml`、`mp4`、`mp3`、`woff2`、`ttf`、`tar`、`7z` 等常见类型没有正确 MIME，宿主若据此选择预览方式会退化为下载。
-
-### 修复方向
-
-扩充映射表，或引入 `mime_guess` 一类只依赖扩展名的库。
 
 ---
 
