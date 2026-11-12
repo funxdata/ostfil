@@ -44,4 +44,4 @@ cargo build --release
 
 - `dytes.json` — 包元信息（`name`/`uuid`/`version`）与平台导出映射
 - `.github/workflows/dytes-release.yml` — 打 `v*` tag 后按平台构建并用 dytes 发布
-- `skills/` — 早期基于 C 结构体接口的设计说明，与当前 JSON 接口不一致，仅供参考
+- `skills/` — 模块设计与编码约定：`code.md` 是当前生效的代码约束，其余为早期基于 C 结构体接口的设计说明，与当前 JSON 接口不一致，仅供参考
