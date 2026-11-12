@@ -37,7 +37,7 @@
 | `500100` | `failed to create dir: <详情>` | 创建 `storage/<uuid>` 失败 |
 | `500101` | `failed to copy file: <详情>` | 拷贝到 `original` 失败 |
 | `500102` | `compression failed: <详情>` | gzip 压缩失败 |
-| `500103` | `failed to write info.json: <详情>` | 写元数据失败 |
+| `500103` | `failed to write info.json: <详情>` / `failed to serialize info: <详情>` | 序列化 `Ostfil` 或写 `info.json` 失败 |
 | `500104` | `failed to compute checksum: <详情>` | 读取文件计算 SHA-256 摘要失败 |
 | `500105` | `failed to read metadata: <详情>` | 读取 `file_path` 元数据失败 |
 | `500106` | `storage path is not valid utf-8` | 拼接出的存储路径无法转为 UTF-8（三个函数均可能返回） |

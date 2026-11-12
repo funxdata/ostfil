@@ -1,6 +1,11 @@
 use crate::ffi::types::{Ostfil, STORAGE_DIR};
 use crate::utils::checksum::digest_file;
-use crate::utils::cjson::{write_error, write_success};
+use crate::utils::cjson::{write_err, write_err_detail, write_success};
+use crate::utils::errcode::{
+    ErrCode, CHECKSUM_FAILED, COMPRESSION_FAILED, COPY_FAILED, CREATE_DIR_FAILED, FILE_NOT_FOUND,
+    INVALID_JSON, INVALID_PATH, INVALID_UTF8, JSON_IN_NULL, NOT_A_FILE, READ_METADATA_FAILED,
+    SERIALIZE_INFO_FAILED, WRITE_INFO_FAILED,
+};
 use crate::utils::info::save_info;
 use crate::utils::pack::do_pack;
 use serde::Deserialize;
@@ -13,13 +18,13 @@ use uuid::Uuid;
 #[unsafe(no_mangle)]
 pub extern "C" fn post_storage(json_in: *const c_char, json_out: *mut c_char) -> c_int {
     if json_in.is_null() {
-        return write_error(json_out, 400100, "json_in is null");
+        return write_err(json_out, JSON_IN_NULL);
     }
 
     let body = unsafe {
         match CStr::from_ptr(json_in).to_str() {
             Ok(s) => s,
-            Err(_) => return write_error(json_out, 400101, "invalid utf-8"),
+            Err(_) => return write_err(json_out, INVALID_UTF8),
         }
     };
 
@@ -30,23 +35,21 @@ pub extern "C" fn post_storage(json_in: *const c_char, json_out: *mut c_char) ->
 
     let req: InputData = match serde_json::from_str(body) {
         Ok(v) => v,
-        Err(e) => return write_error(json_out, 400102, &format!("invalid json: {}", e)),
+        Err(e) => return write_err_detail(json_out, INVALID_JSON, e),
     };
 
     let file_path = Path::new(&req.file_path);
     if !file_path.exists() {
-        return write_error(json_out, 400103, "file does not exist");
+        return write_err(json_out, FILE_NOT_FOUND);
     }
 
     // 只接受普通文件：目录、设备文件等直接拒绝，避免 fs::copy 报出误导性的错误
     let metadata = match fs::metadata(file_path) {
         Ok(m) => m,
-        Err(e) => {
-            return write_error(json_out, 500105, &format!("failed to read metadata: {}", e))
-        }
+        Err(e) => return write_err_detail(json_out, READ_METADATA_FAILED, e),
     };
     if !metadata.is_file() {
-        return write_error(json_out, 400106, "file_path is not a regular file");
+        return write_err(json_out, NOT_A_FILE);
     }
     let size = metadata.len();
 
@@ -56,12 +59,7 @@ pub extern "C" fn post_storage(json_in: *const c_char, json_out: *mut c_char) ->
     // 创建 uuid 目录
     let uuid_dir = Path::new(STORAGE_DIR).join(&uuid);
     if let Err(e) = fs::create_dir_all(&uuid_dir) {
-        return fail(
-            json_out,
-            &uuid_dir,
-            500100,
-            format!("failed to create dir: {}", e),
-        );
+        return fail(json_out, &uuid_dir, CREATE_DIR_FAILED, e);
     }
 
     // 文件扩展名
@@ -74,12 +72,7 @@ pub extern "C" fn post_storage(json_in: *const c_char, json_out: *mut c_char) ->
     // 拷贝原文件
     let original_path = uuid_dir.join("original");
     if let Err(e) = fs::copy(file_path, &original_path) {
-        return fail(
-            json_out,
-            &uuid_dir,
-            500101,
-            format!("failed to copy file: {}", e),
-        );
+        return fail(json_out, &uuid_dir, COPY_FAILED, e);
     }
 
     // 压缩 original -> original.z
@@ -87,32 +80,15 @@ pub extern "C" fn post_storage(json_in: *const c_char, json_out: *mut c_char) ->
     let (Some(original_str), Some(compressed_str)) =
         (original_path.to_str(), compressed_path.to_str())
     else {
-        return fail(
-            json_out,
-            &uuid_dir,
-            500106,
-            "storage path is not valid utf-8".to_string(),
-        );
+        return fail_plain(json_out, &uuid_dir, INVALID_PATH);
     };
     if let Err(e) = do_pack(original_str, compressed_str) {
-        return fail(
-            json_out,
-            &uuid_dir,
-            500102,
-            format!("compression failed: {}", e),
-        );
+        return fail(json_out, &uuid_dir, COMPRESSION_FAILED, e);
     }
 
     let checksum = match digest_file(&original_path) {
         Ok(checksum) => checksum,
-        Err(e) => {
-            return fail(
-                json_out,
-                &uuid_dir,
-                500104,
-                format!("failed to compute checksum: {}", e),
-            )
-        }
+        Err(e) => return fail(json_out, &uuid_dir, CHECKSUM_FAILED, e),
     };
     let content_type = content_type_for(&extra);
 
@@ -130,42 +106,31 @@ pub extern "C" fn post_storage(json_in: *const c_char, json_out: *mut c_char) ->
 
     let info = match serde_json::to_string_pretty(&ostfil) {
         Ok(s) => s,
-        Err(e) => {
-            return fail(
-                json_out,
-                &uuid_dir,
-                500103,
-                format!("failed to serialize info: {}", e),
-            )
-        }
+        Err(e) => return fail(json_out, &uuid_dir, SERIALIZE_INFO_FAILED, e),
     };
     let Some(dir_str) = uuid_dir.to_str() else {
-        return fail(
-            json_out,
-            &uuid_dir,
-            500106,
-            "storage path is not valid utf-8".to_string(),
-        );
+        return fail_plain(json_out, &uuid_dir, INVALID_PATH);
     };
 
     // 写入 info.json（使用 utils::info::save_info）
     if let Err(e) = save_info(dir_str, &info) {
-        return fail(
-            json_out,
-            &uuid_dir,
-            500103,
-            format!("failed to write info.json: {}", e),
-        );
+        return fail(json_out, &uuid_dir, WRITE_INFO_FAILED, e);
     }
 
     // 返回结果
     write_success(json_out, "success", json!(ostfil))
 }
 
-/// 写入错误响应，并清理本次创建的目录，避免留下孤儿目录。
-fn fail(json_out: *mut c_char, dir: &Path, code: i32, msg: String) -> c_int {
+/// 写入带详情的错误响应，并清理本次创建的目录，避免留下孤儿目录。
+fn fail(json_out: *mut c_char, dir: &Path, err: ErrCode, detail: impl std::fmt::Display) -> c_int {
     let _ = fs::remove_dir_all(dir);
-    write_error(json_out, code, &msg)
+    write_err_detail(json_out, err, detail)
+}
+
+/// 写入固定错误响应（无详情），并清理本次创建的目录。
+fn fail_plain(json_out: *mut c_char, dir: &Path, err: ErrCode) -> c_int {
+    let _ = fs::remove_dir_all(dir);
+    write_err(json_out, err)
 }
 
 /// 按扩展名返回基础 MIME 类型；未知类型返回 application/octet-stream。

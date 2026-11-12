@@ -1,5 +1,9 @@
 use crate::ffi::types::{is_safe_uuid, Ostfil, STORAGE_DIR};
-use crate::utils::cjson::{write_error, write_success};
+use crate::utils::cjson::{write_err, write_err_detail, write_success};
+use crate::utils::errcode::{
+    DECOMPRESSION_FAILED, INVALID_INFO_JSON, INVALID_JSON, INVALID_PATH, INVALID_UTF8,
+    INVALID_UUID, JSON_IN_NULL, READ_INFO_FAILED, UUID_NOT_FOUND,
+};
 use crate::utils::info::get_info;
 use crate::utils::pack::un_pack;
 use chrono;
@@ -11,13 +15,13 @@ use std::path::Path;
 #[unsafe(no_mangle)]
 pub extern "C" fn post_get_fil(json_in: *const c_char, json_out: *mut c_char) -> c_int {
     if json_in.is_null() {
-        return write_error(json_out, 400100, "json_in is null");
+        return write_err(json_out, JSON_IN_NULL);
     }
 
     let body = unsafe {
         match CStr::from_ptr(json_in).to_str() {
             Ok(s) => s,
-            Err(_) => return write_error(json_out, 400101, "invalid utf-8"),
+            Err(_) => return write_err(json_out, INVALID_UTF8),
         }
     };
 
@@ -28,37 +32,31 @@ pub extern "C" fn post_get_fil(json_in: *const c_char, json_out: *mut c_char) ->
 
     let req: InputData = match serde_json::from_str(body) {
         Ok(v) => v,
-        Err(e) => return write_error(json_out, 400102, &format!("invalid json: {}", e)),
+        Err(e) => return write_err_detail(json_out, INVALID_JSON, e),
     };
 
     if !is_safe_uuid(&req.uuid) {
-        return write_error(json_out, 400105, "invalid uuid");
+        return write_err(json_out, INVALID_UUID);
     }
 
     let uuid_dir = Path::new(STORAGE_DIR).join(&req.uuid);
     if !uuid_dir.exists() {
-        return write_error(json_out, 400104, "uuid directory does not exist");
+        return write_err(json_out, UUID_NOT_FOUND);
     }
 
     let Some(dir_str) = uuid_dir.to_str() else {
-        return write_error(json_out, 500106, "storage path is not valid utf-8");
+        return write_err(json_out, INVALID_PATH);
     };
 
     // 读取 info.json（使用 utils::info::get_info）
     let content = match get_info(dir_str) {
         Ok(c) => c,
-        Err(e) => {
-            return write_error(
-                json_out,
-                500200,
-                &format!("failed to read info.json: {}", e),
-            )
-        }
+        Err(e) => return write_err_detail(json_out, READ_INFO_FAILED, e),
     };
 
     let mut ostfil: Ostfil = match serde_json::from_str(&content) {
         Ok(f) => f,
-        Err(e) => return write_error(json_out, 500201, &format!("invalid json: {}", e)),
+        Err(e) => return write_err_detail(json_out, INVALID_INFO_JSON, e),
     };
 
     // 刷新最后使用时间，并记录是否需要在读取后写回
@@ -84,10 +82,10 @@ pub extern "C" fn post_get_fil(json_in: *const c_char, json_out: *mut c_char) ->
         let (Some(compressed_str), Some(original_str)) =
             (compressed_path.to_str(), original_path.to_str())
         else {
-            return write_error(json_out, 500106, "storage path is not valid utf-8");
+            return write_err(json_out, INVALID_PATH);
         };
         if let Err(e) = un_pack(compressed_str, original_str) {
-            return write_error(json_out, 500202, &format!("decompression failed: {}", e));
+            return write_err_detail(json_out, DECOMPRESSION_FAILED, e);
         }
     }
 

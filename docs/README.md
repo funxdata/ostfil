@@ -12,6 +12,7 @@
 | `src/ffi/delete.rs` | 删除整个 `storage/<uuid>/` 目录 |
 | `src/ffi/types.rs` | `Ostfil` 元数据结构体、`STORAGE_DIR`（`./storage`） |
 | `src/utils/cjson.rs` | 向 C 缓冲区写 JSON，统一成功/错误信封 |
+| `src/utils/errcode.rs` | 全部错误码与固定文案（`ErrCode` 常量） |
 | `src/utils/info.rs` | `info.json` 读写 |
 | `src/utils/checksum.rs` | 文件校验摘要：SHA-256；超过 8 MiB 时取大小 + 首尾各 4 MiB |
 | `src/utils/pack.rs` | gzip 压缩 / 解压 |

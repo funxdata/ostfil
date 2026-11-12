@@ -1,3 +1,4 @@
+use crate::utils::errcode::ErrCode;
 use serde_json::{json, Value};
 use std::ffi::{c_char, c_int};
 
@@ -33,6 +34,20 @@ pub fn write_error(json_out: *mut c_char, code: i32, msg: &str) -> c_int {
             "msg": msg
         }),
     )
+}
+
+/// 返回固定错误（无动态详情）
+pub fn write_err(json_out: *mut c_char, err: ErrCode) -> c_int {
+    write_error(json_out, err.code, err.msg)
+}
+
+/// 返回错误，并在固定文案后追加详情
+pub fn write_err_detail(
+    json_out: *mut c_char,
+    err: ErrCode,
+    detail: impl std::fmt::Display,
+) -> c_int {
+    write_error(json_out, err.code, &err.with_detail(detail))
 }
 
 /// 返回成功 JSON
