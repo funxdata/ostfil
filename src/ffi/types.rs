@@ -6,7 +6,12 @@ pub struct Ostfil {
     pub size: u64,
     pub extra: String,
     pub end_time: u64,
-    pub md5: String,
+    #[serde(default)]
+    pub sha256: String,
+    #[serde(default)]
+    pub sampled: bool,
+    #[serde(default)]
+    pub sample_bytes: u64,
     #[serde(default)]
     pub content_type: String,
 }

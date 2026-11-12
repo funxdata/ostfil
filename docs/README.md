@@ -7,13 +7,13 @@
 | 路径 | 职责 |
 | --- | --- |
 | `src/lib.rs` | 库入口，重导出三个 FFI 函数 |
-| `src/ffi/storage.rs` | 落盘：拷贝原文件、gzip 压缩、计算 MD5/大小/类型、写 `info.json` |
+| `src/ffi/storage.rs` | 落盘：拷贝原文件、gzip 压缩、计算 SHA-256/大小/类型、写 `info.json` |
 | `src/ffi/info.rs` | 读取 `info.json`、按需解压、刷新 `end_time`、补齐旧记录字段 |
 | `src/ffi/delete.rs` | 删除整个 `storage/<uuid>/` 目录 |
 | `src/ffi/types.rs` | `Ostfil` 元数据结构体、`STORAGE_DIR`（`./storage`） |
 | `src/utils/cjson.rs` | 向 C 缓冲区写 JSON，统一成功/错误信封 |
 | `src/utils/info.rs` | `info.json` 读写 |
-| `src/utils/md.rs` | 文件 MD5 |
+| `src/utils/checksum.rs` | 文件校验摘要：SHA-256；超过 8 MiB 时取大小 + 首尾各 4 MiB |
 | `src/utils/pack.rs` | gzip 压缩 / 解压 |
 
 ## 文档索引

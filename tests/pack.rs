@@ -1,4 +1,3 @@
-use ostfil::utils::md::compute_md5;
 use ostfil::utils::pack::{do_pack, un_pack};
 use std::fs;
 use std::path::PathBuf;
@@ -25,18 +24,6 @@ fn pack_and_unpack_roundtrip() {
 
     un_pack(packed.to_str().unwrap(), restored.to_str().unwrap()).expect("解压");
     assert_eq!(fs::read(&restored).unwrap(), b"hello ostfil\n");
-
-    fs::remove_dir_all(&dir).expect("清理临时目录");
-}
-
-#[test]
-fn md5_matches_known_value() {
-    let dir = scratch("md5");
-    let path = dir.join("a.txt");
-    fs::write(&path, b"hello ostfil\n").expect("写入源文件");
-
-    let md5 = compute_md5(&path).expect("计算 md5");
-    assert_eq!(md5, "a69d77649ecf0997d57a606cad0c732d");
 
     fs::remove_dir_all(&dir).expect("清理临时目录");
 }

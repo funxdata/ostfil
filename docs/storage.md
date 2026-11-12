@@ -40,7 +40,9 @@ pub const STORAGE_DIR: &str = "./storage";
   "size": 1024,
   "extra": "txt",
   "end_time": 1762531200,
-  "md5": "9e107d9d372bb6826bd81d3542a419d6",
+  "sha256": "2dc4378f5479b2f6ac42eda016d41bdbc2b51638a550800592d18d9052fdcdf9",
+  "sampled": false,
+  "sample_bytes": 0,
   "content_type": "text/plain"
 }
 ```
@@ -55,7 +57,7 @@ pub const STORAGE_DIR: &str = "./storage";
 4. `extra` 取 `Path::extension()`，无扩展名为空串。
 5. 拷贝源文件到 `original` → 失败 `500101`。
 6. `do_pack(original, original.z)` → 失败 `500102`。
-7. `compute_md5(original)`（分块读取）→ 失败 `500104`；按 `extra` 推断 `content_type`。
+7. `digest_file(original)`（≤ 8 MiB 全量，> 8 MiB 取大小 + 首尾各 4 MiB）→ 失败 `500104`；按 `extra` 推断 `content_type`。
 8. 组装 `Ostfil`，`end_time` 取当前 UTC 秒级时间戳。
 9. 写 `info.json` → 失败 `500103`。
 10. 返回 `Ostfil`。
@@ -70,7 +72,7 @@ pub const STORAGE_DIR: &str = "./storage";
 2. 读 `info.json` → 读失败 `500200`，解析失败 `500201`。
 3. 内存中把 `end_time` 刷新为当前时间，**不回写**文件（见 [已知问题](./issues.md) I-08）。
 4. 若 `original` 不存在，取 `original.z`（不存在则回退旧布局 `original.z.z`）解压还原，失败 `500202`。
-5. 兼容旧记录：`content_type` 为空则按 `extra` 推断；`md5` 为空且 `original` 存在则补算。
+5. 兼容旧记录：`content_type` 为空则按 `extra` 推断；`sha256` 为空且 `original` 存在则补算（同时补 `sampled` / `sample_bytes`）。
 6. 返回 `Ostfil`。
 
 ## 删除流程（post_delete_file）

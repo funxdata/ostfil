@@ -1,7 +1,7 @@
 use crate::ffi::types::{Ostfil, STORAGE_DIR};
+use crate::utils::checksum::digest_file;
 use crate::utils::cjson::{write_error, write_success};
 use crate::utils::info::save_info;
-use crate::utils::md::compute_md5;
 use crate::utils::pack::do_pack;
 use serde::Deserialize;
 use serde_json::json;
@@ -103,14 +103,14 @@ pub extern "C" fn post_storage(json_in: *const c_char, json_out: *mut c_char) ->
         );
     }
 
-    let md5 = match compute_md5(&original_path) {
-        Ok(md5) => md5,
+    let checksum = match digest_file(&original_path) {
+        Ok(checksum) => checksum,
         Err(e) => {
             return fail(
                 json_out,
                 &uuid_dir,
                 500104,
-                format!("failed to compute md5: {}", e),
+                format!("failed to compute checksum: {}", e),
             )
         }
     };
@@ -122,7 +122,9 @@ pub extern "C" fn post_storage(json_in: *const c_char, json_out: *mut c_char) ->
         size,
         extra,
         end_time: chrono::Utc::now().timestamp() as u64,
-        md5,
+        sha256: checksum.sha256,
+        sampled: checksum.sampled,
+        sample_bytes: checksum.sample_bytes,
         content_type,
     };
 

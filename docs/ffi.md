@@ -59,7 +59,9 @@ int post_delete_file(const char *json_in, char *json_out);
   "size": 1024,
   "extra": "txt",
   "end_time": 1762531200,
-  "md5": "9e107d9d372bb6826bd81d3542a419d6",
+  "sha256": "2dc4378f5479b2f6ac42eda016d41bdbc2b51638a550800592d18d9052fdcdf9",
+  "sampled": false,
+  "sample_bytes": 0,
   "content_type": "text/plain"
 }
 ```
@@ -70,8 +72,17 @@ int post_delete_file(const char *json_in, char *json_out);
 | `size` | u64 | 原始文件字节数 |
 | `extra` | string | 扩展名，不含 `.`，取 `Path::extension()` 原样（大小写保留）；无扩展名为 `""` |
 | `end_time` | u64 | Unix 时间戳（秒，UTC）。写入时是入库时间，每次 `post_get_fil` 刷新为最近读取时间 |
-| `md5` | string | 原文件 MD5，小写十六进制 32 字符 |
+| `sha256` | string | 文件校验摘要，小写十六进制；计算规则见下 |
+| `sampled` | bool | 是否按大文件采样规则计算 |
+| `sample_bytes` | u64 | 采样时首尾各取的字节数（4194304），非采样为 `0` |
 | `content_type` | string | 依据 `extra` 推断的 MIME 类型；旧记录缺失时在读取时补齐 |
+
+**校验规则（与 dytes 的 `FileChecksum` 一致）**：
+
+- `size <= 8 MiB`：整个文件的 SHA-256，`sampled = false`、`sample_bytes = 0`；
+- `size > 8 MiB`：`size`（u64 小端）+ 首 4 MiB + 尾 4 MiB 的 SHA-256，`sampled = true`、`sample_bytes = 4194304`。
+
+大文件因此不需要读取全部内容；写入与后续校验使用同一规则。
 
 `content_type` 映射（比较时转小写）：
 
@@ -129,7 +140,7 @@ int post_delete_file(const char *json_in, char *json_out);
 3. 生成 v4 UUID，创建 `./storage/<uuid>/`（失败 `500100`）。
 4. 拷贝源文件到 `<uuid>/original`（失败 `500101`）。
 5. gzip 压缩到 `<uuid>/original.z`（失败 `500102`），详见 [存储布局](./storage.md)。
-6. 计算 MD5（失败 `500104`）、读取大小、推断 `content_type`。
+6. 计算校验摘要（失败 `500104`）、推断 `content_type`。
 7. 写 `<uuid>/info.json`（失败 `500103`）。
 8. 返回 `Ostfil` 对象，`msg` 为 `success`。
 
@@ -138,7 +149,7 @@ int post_delete_file(const char *json_in, char *json_out);
 成功响应：
 
 ```json
-{"code":200,"data":{"uuid":"...","size":12,"extra":"txt","end_time":1762531200,"md5":"...","content_type":"text/plain"},"msg":"success"}
+{"code":200,"data":{"uuid":"...","size":12,"extra":"txt","end_time":1762531200,"sha256":"...","sampled":false,"sample_bytes":0,"content_type":"text/plain"},"msg":"success"}
 ```
 
 副作用：写入 `./storage/<uuid>/`；源文件保持原样。
@@ -159,7 +170,7 @@ int post_delete_file(const char *json_in, char *json_out);
 2. 读取 `<uuid>/info.json`（失败 `500200`，内容不是合法 JSON 返回 `500201`）。
 3. 把 `end_time` 刷新为当前 Unix 时间（仅返回内存中的值，**不回写** `info.json`）。
 4. 若 `original` 不存在，取 `original.z`（缺失时回退旧布局 `original.z.z`）解压还原（失败 `500202`）。
-5. 旧记录兼容：`content_type` 为空时按 `extra` 重新推断；`md5` 为空且 `original` 存在时重新计算。
+5. 旧记录兼容：`content_type` 为空时按 `extra` 重新推断；`sha256` 为空且 `original` 存在时重新计算（含 `sampled` / `sample_bytes`）。
 6. 返回 `Ostfil` 对象。
 
 `uuid` 会先校验为 36 位 UUID 形式（十六进制 + 连字符），`../`、绝对路径等输入返回 `400105`，不会越出 `storage/`。

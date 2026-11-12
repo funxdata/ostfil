@@ -67,7 +67,12 @@ fn storage_get_delete_roundtrip() {
     assert_eq!(data["size"], 13);
     assert_eq!(data["extra"], "txt");
     assert_eq!(data["content_type"], "text/plain");
-    assert_eq!(data["md5"], "a69d77649ecf0997d57a606cad0c732d");
+    assert_eq!(
+        data["sha256"],
+        "2dc4378f5479b2f6ac42eda016d41bdbc2b51638a550800592d18d9052fdcdf9"
+    );
+    assert_eq!(data["sampled"], false);
+    assert_eq!(data["sample_bytes"], 0);
 
     let dir = root.join("storage").join(&uuid);
     assert!(dir.join("original").exists(), "应保留 original");
@@ -82,7 +87,10 @@ fn storage_get_delete_roundtrip() {
 
     let got = call(post_get_fil, &json!({ "uuid": uuid }));
     assert_eq!(got["code"], 200);
-    assert_eq!(got["data"]["md5"], "a69d77649ecf0997d57a606cad0c732d");
+    assert_eq!(
+        got["data"]["sha256"],
+        "2dc4378f5479b2f6ac42eda016d41bdbc2b51638a550800592d18d9052fdcdf9"
+    );
 
     let deleted = call(post_delete_file, &json!({ "uuid": uuid }));
     assert_eq!(deleted["code"], 200, "delete: {}", deleted);
@@ -139,6 +147,7 @@ fn restores_legacy_original_zz() {
     .expect("压缩");
     fs::remove_file(&original).expect("删除 original");
 
+    // 旧布局 + 旧元数据：只有 original.z.z，info.json 里是已废弃的 md5 字段
     fs::write(
         dir.join("info.json"),
         json!({
@@ -157,7 +166,10 @@ fn restores_legacy_original_zz() {
     assert_eq!(got["code"], 200, "{}", got);
     assert_eq!(fs::read(&original).unwrap(), payload, "应从 original.z.z 还原");
     assert_eq!(got["data"]["content_type"], "text/plain", "应补齐 content_type");
-    assert!(!got["data"]["md5"].as_str().unwrap().is_empty(), "应补算 md5");
+    assert!(
+        !got["data"]["sha256"].as_str().unwrap().is_empty(),
+        "应补算 sha256"
+    );
 
     drop(guard);
     fs::remove_dir_all(&root).expect("清理临时目录");

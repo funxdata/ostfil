@@ -5,7 +5,7 @@
 - Rust stable（`#[unsafe(no_mangle)]` 语法需要 1.82 及以上）
 - 无系统级原生依赖；`flate2` 默认使用纯 Rust 后端
 
-依赖（`Cargo.toml`）：`chrono`、`flate2`、`serde`（`derive`）、`serde_json`、`uuid`（`v4`）、`md5`。
+依赖（`Cargo.toml`）：`chrono`、`flate2`、`serde`（`derive`）、`serde_json`、`uuid`（`v4`）、`sha2`。
 
 ## 构建
 

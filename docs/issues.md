@@ -14,7 +14,7 @@
 | I-04 | `original` 压缩后不删除，磁盘占用翻倍 | 中 | 待讨论 |
 | I-05 | `post_storage` 失败不回滚，且错误响应不带 `uuid` | 中 | 部分修复 |
 | I-06 | 函数返回值不表示业务成败 | 中 | 待讨论 |
-| I-07 | MD5 全量读入内存，大文件可能 OOM | 中 | 已修复 |
+| I-07 | 校验值计算占用大（原 MD5 全量读入），已改为 SHA-256 + 大文件首尾采样 | 中 | 已修复 |
 | I-08 | `end_time` 更新不持久化，字段名与语义不符 | 中 | 待讨论 |
 | I-09 | 存储根目录依赖进程工作目录，无配置入口 | 中 | 待讨论 |
 | I-10 | 无并发控制，非原子写入 | 中 | 部分修复 |
@@ -151,7 +151,7 @@ un_pack(compressed_path.to_str().unwrap(), original_path.to_str().unwrap())
 
 ### 现象
 
-创建目录之后的任一失败（拷贝、压缩、MD5、写 `info.json`）都直接 `return write_error(...)`，不清理已创建的 `storage/<uuid>/`。错误信封固定为 `{code, data:{}, msg}`，不携带 `uuid`。
+创建目录之后的任一失败（拷贝、压缩、校验、写 `info.json`）都直接 `return write_error(...)`，不清理已创建的 `storage/<uuid>/`。错误信封固定为 `{code, data:{}, msg}`，不携带 `uuid`。
 
 ### 影响
 
@@ -185,11 +185,11 @@ C 调用方按惯例「0 即成功」，极易把错误当成功；文档已注�
 
 ---
 
-## I-07 MD5 全量读入内存，大文件可能 OOM
+## I-07 校验值计算占用大：原 MD5 全量读入
 
-**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`src/utils/md.rs::compute_md5`
+**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`src/utils/checksum.rs::digest_file`
 
-**说明**：`compute_md5` 改为 64 KiB 分块读取，内存占用与文件大小无关。
+**说明**：不再使用 MD5，改为与 dytes `FileChecksum` 一致的 SHA-256：`size <= 8 MiB` 计算整文件摘要，超过则取 `size`（u64 小端）+ 首 4 MiB + 尾 4 MiB；`Ostfil` 新增 `sampled` / `sample_bytes` 字段。
 
 ### 现象
 
@@ -197,7 +197,7 @@ C 调用方按惯例「0 即成功」，极易把错误当成功；文档已注�
 let bytes = fs::read(path)?;
 ```
 
-一次性把整个文件读进 `Vec<u8>` 再计算 MD5，没有大小上限。压缩路径是流式的，只有 MD5 不是。
+原实现一次性把整个文件读进 `Vec<u8>` 再计算 MD5，没有大小上限。压缩路径是流式的，只有 MD5 不是。
 
 ### 影响
 
@@ -205,7 +205,11 @@ let bytes = fs::read(path)?;
 
 ### 修复方向
 
-改为 `BufReader` + `md5::Context` 分块更新（64 KiB 一次），不改变结果。
+已按 dytes 的校验方案实现（`src/utils/checksum.rs`）：
+
+- 大文件只读首尾各 4 MiB，内存占用固定；
+- `FileChecksum { sha256, size, sampled, sample_bytes }` 的字段与 dytes 一致，便于之后复用其校验逻辑；
+- 旧 `info.json` 中的 `md5` 字段被忽略，读取时按新规则补算 `sha256`。
 
 ---
 

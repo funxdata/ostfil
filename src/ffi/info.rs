@@ -86,13 +86,15 @@ pub extern "C" fn post_get_fil(json_in: *const c_char, json_out: *mut c_char) ->
         }
     }
 
-    // 兼容旧 info.json：补齐 md5 / content_type
+    // 兼容旧 info.json：补齐 sha256 / content_type
     if ostfil.content_type.is_empty() {
         ostfil.content_type = crate::ffi::storage::content_type_for(&ostfil.extra);
     }
-    if ostfil.md5.is_empty() && original_path.exists() {
-        if let Ok(md5) = crate::utils::md::compute_md5(&original_path) {
-            ostfil.md5 = md5;
+    if ostfil.sha256.is_empty() && original_path.exists() {
+        if let Ok(checksum) = crate::utils::checksum::digest_file(&original_path) {
+            ostfil.sha256 = checksum.sha256;
+            ostfil.sampled = checksum.sampled;
+            ostfil.sample_bytes = checksum.sample_bytes;
         }
     }
 
