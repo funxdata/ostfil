@@ -30,7 +30,7 @@ pub const STORAGE_DIR: &str = "./storage";
 
 ## info.json
 
-内容即 `Ostfil` 结构体，字段含义见 [接口说明](./api.md#ostfil-数据结构)：
+内容即 `Ostfil` 结构体，字段含义见 [FFI 接口](./ffi.md#ostfil-数据结构)：
 
 ```json
 {
