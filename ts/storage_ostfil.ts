@@ -1,12 +1,7 @@
-const res = await fetch("http://127.0.0.1:44944/libostfil", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/os",
-    "FFI-Symbol": "storage",
-  },
-  body: JSON.stringify({
-    file_path: "/home/funx/Downloads/logo.png",
-  }),
+import { callFfi } from "./ffi.ts";
+
+const result = callFfi("post_storage", {
+  file_path: "/home/funx/Downloads/logo.png",
 });
 
-console.log(await res.json());
+console.log(JSON.stringify(result, null, 2));
