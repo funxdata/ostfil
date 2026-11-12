@@ -37,6 +37,10 @@ int post_delete_file(const char *json_in, char *json_out);
 
 字段顺序固定为 `code`、`data`、`msg`（`serde_json` 默认按键排序）。
 
+### 并发
+
+库内不加锁。`post_storage` 每次创建独立目录，不同请求互不影响；同一 `uuid` 的读取与删除需由宿主串行调用（并发删除时读取会返回 `500200`）。`info.json` 采用原子替换写入，不会产生截断文件。
+
 ### 返回值语义（重要）
 
 函数返回值只表示**输出缓冲区是否写入成功**，不表示业务是否成功：
