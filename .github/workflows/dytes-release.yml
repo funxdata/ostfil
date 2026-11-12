@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  DYTES_VERSION: "0.2.1"
+
 jobs:
   prepare:
     name: Prepare
@@ -49,6 +52,11 @@ jobs:
       matrix:
         platform: ${{ fromJson(needs.prepare.outputs.platforms) }}
     runs-on: ${{ matrix.platform == 'windows' && 'windows-latest' || matrix.platform == 'macos' && 'macos-latest' || 'ubuntu-latest' }}
+    env:
+      # 官方 Action 与兜底脚本共用；优先级：环境变量 > dytes config
+      DYTES_S3_BUCKET: ${{ secrets.UPYUN_BUCKET }}
+      DYTES_S3_ACCESS_KEY: ${{ secrets.UPYUN_API_KEY }}
+      DYTES_S3_SECRET_KEY: ${{ secrets.UPYUN_API_SECRET }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,10 +95,19 @@ jobs:
           cmake -S . -B build -G Ninja -DBUILD_TESTS=OFF
           cmake --build build --config Release
 
-      - name: Publish with dytes
+      # 优先使用 dytes 官方 composite Action（自带对应平台二进制）
+      - name: Publish with dytes (action)
+        id: dytes
+        continue-on-error: true
+        uses: dytescn/dytes@v0.2.1
+        with:
+          command: publish
+          version: ${{ env.DYTES_VERSION }}
+
+      # 官方 Action 只在 GitHub 下载、无 CDN 兜底；失败时用带重试 + CDN 回退的脚本重跑
+      - name: Publish with dytes (fallback)
+        if: steps.dytes.outcome == 'failure'
         shell: bash
-        env:
-          DYTES_VERSION: "0.1.20"
         run: |
           set -euo pipefail
           case "${{ runner.os }}" in
