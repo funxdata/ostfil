@@ -1,35 +1,39 @@
 # ostfil 已知问题
 
-> 记录对 `1.0.4` 源码做静态审计时发现的缺陷：现象、影响与修复方向。条目编号固定，修复后请更新状态而不是删除条目。最近更新：2026-11-12。
+> 记录对 `1.0.4` 源码做静态审计时发现的缺陷：现象、影响与修复方向。条目编号固定，修复后更新状态而不是删除条目。
+>
+> 2026-11-12：已修复可直接处理的 10 条、部分修复 2 条，其余 6 条标为「待讨论」，等待产品或接口层面的决定。已修复条目保留原始现象描述，修复内容见各条「说明」。
 
 ## 汇总
 
 | 编号 | 问题 | 严重程度 | 状态 |
 | --- | --- | --- | --- |
-| I-01 | `uuid` 未校验，可越出 `storage/` 删除或读取任意目录 | 高 | 未修复 |
-| I-02 | 压缩产物实际为 `original.z.z` | 中 | 未修复 |
-| I-03 | `un_pack` 参数语义错误，解压功能不可用 | 中 | 未修复 |
-| I-04 | `original` 压缩后不删除，磁盘占用翻倍 | 中 | 未修复 |
-| I-05 | `post_storage` 失败不回滚，且错误响应不带 `uuid` | 中 | 未修复 |
-| I-06 | 函数返回值不表示业务成败 | 中 | 未修复 |
-| I-07 | MD5 全量读入内存，大文件可能 OOM | 中 | 未修复 |
-| I-08 | `end_time` 更新不持久化，字段名与语义不符 | 中 | 未修复 |
-| I-09 | 存储根目录依赖进程工作目录，无配置入口 | 中 | 未修复 |
-| I-10 | 无并发控制，非原子写入 | 中 | 未修复 |
-| I-11 | 没有任何测试 | 中 | 未修复 |
-| I-12 | FFI 边界存在 `unwrap()`，panic 会终止宿主进程 | 中 | 未修复 |
-| I-13 | `file_path` 不校验是否为普通文件 | 低 | 未修复 |
-| I-14 | `size` 吞掉错误，与 0 字节文件不可区分 | 低 | 未修复 |
-| I-15 | 冗余依赖 `libc`、`once_cell` | 低 | 未修复 |
-| I-16 | 输出缓冲区上限 65536 不可协商 | 低 | 未修复 |
-| I-17 | `content_type` 覆盖范围有限 | 低 | 未修复 |
-| I-18 | 发布流程存在不可达分支，未传 `DYTES_S3_ENDPOINT` | 低 | 未修复 |
+| I-01 | `uuid` 未校验，可越出 `storage/` 删除或读取任意目录 | 高 | 已修复 |
+| I-02 | 压缩产物实际为 `original.z.z` | 中 | 已修复 |
+| I-03 | `un_pack` 参数语义错误，解压功能不可用 | 中 | 已修复 |
+| I-04 | `original` 压缩后不删除，磁盘占用翻倍 | 中 | 待讨论 |
+| I-05 | `post_storage` 失败不回滚，且错误响应不带 `uuid` | 中 | 部分修复 |
+| I-06 | 函数返回值不表示业务成败 | 中 | 待讨论 |
+| I-07 | MD5 全量读入内存，大文件可能 OOM | 中 | 已修复 |
+| I-08 | `end_time` 更新不持久化，字段名与语义不符 | 中 | 待讨论 |
+| I-09 | 存储根目录依赖进程工作目录，无配置入口 | 中 | 待讨论 |
+| I-10 | 无并发控制，非原子写入 | 中 | 部分修复 |
+| I-11 | 没有任何测试 | 中 | 已修复 |
+| I-12 | FFI 边界存在 `unwrap()`，panic 会终止宿主进程 | 中 | 已修复 |
+| I-13 | `file_path` 不校验是否为普通文件 | 低 | 已修复 |
+| I-14 | `size` 吞掉错误，与 0 字节文件不可区分 | 低 | 已修复 |
+| I-15 | 冗余依赖 `libc`、`once_cell` | 低 | 已修复 |
+| I-16 | 输出缓冲区上限 65536 不可协商 | 低 | 待讨论 |
+| I-17 | `content_type` 覆盖范围有限 | 低 | 已修复 |
+| I-18 | 发布流程存在不可达分支，未传 `DYTES_S3_ENDPOINT` | 低 | 待讨论 |
 
 ---
 
 ## I-01 `uuid` 未校验，可越出 `storage/` 删除或读取任意目录
 
-**严重程度**：高 ｜ **状态**：未修复 ｜ **位置**：`src/ffi/delete.rs:32`、`src/ffi/info.rs:34`
+**严重程度**：高 ｜ **状态**：已修复 ｜ **位置**：`src/ffi/types.rs::is_safe_uuid`、`src/ffi/delete.rs::post_delete_file`、`src/ffi/info.rs::post_get_fil`
+
+**说明**：入口校验 36 位 UUID 格式（十六进制 + 连字符），非法返回 `400105`；`../`、绝对路径均被拦截。
 
 ### 现象
 
@@ -60,7 +64,9 @@ let uuid_dir = Path::new(STORAGE_DIR).join(&req.uuid);
 
 ## I-02 压缩产物实际为 `original.z.z`
 
-**严重程度**：中 ｜ **状态**：未修复 ｜ **位置**：`src/utils/pack.rs:9`、`src/ffi/storage.rs:70-74`
+**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`src/utils/pack.rs::do_pack`、`src/ffi/storage.rs::post_storage`
+
+**说明**：`do_pack` / `un_pack` 统一为 `(src, dst)` 语义，产物固定为 `original.z`。
 
 ### 现象
 
@@ -86,7 +92,9 @@ let output_file_path = format!("{}.z", save_path);
 
 ## I-03 `un_pack` 参数语义错误，解压功能不可用
 
-**严重程度**：中 ｜ **状态**：未修复 ｜ **位置**：`src/utils/pack.rs:25-30`、`src/ffi/info.rs:63-68`
+**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`src/utils/pack.rs::un_pack`、`src/ffi/info.rs::post_get_fil`
+
+**说明**：解压写回 `original`，读取时兼容旧布局 `original.z.z`，由 `restores_legacy_original_zz` 覆盖。
 
 ### 现象
 
@@ -117,7 +125,9 @@ un_pack(compressed_path.to_str().unwrap(), original_path.to_str().unwrap())
 
 ## I-04 `original` 压缩后不删除，磁盘占用翻倍
 
-**严重程度**：中 ｜ **状态**：未修复 ｜ **位置**：`src/ffi/storage.rs:69-76`
+**严重程度**：中 ｜ **状态**：待讨论 ｜ **位置**：`src/ffi/storage.rs::post_storage`
+
+**说明**：是否在压缩后删除 `original`：删除可省一半空间，但读取必须依赖解压；需产品确认。
 
 ### 现象
 
@@ -135,7 +145,9 @@ un_pack(compressed_path.to_str().unwrap(), original_path.to_str().unwrap())
 
 ## I-05 `post_storage` 失败不回滚，且错误响应不带 `uuid`
 
-**严重程度**：中 ｜ **状态**：未修复 ｜ **位置**：`src/ffi/storage.rs:45-103`
+**严重程度**：中 ｜ **状态**：部分修复 ｜ **位置**：`src/ffi/storage.rs::fail`
+
+**说明**：已修复：失败路径统一删除本次创建的目录。待讨论：错误响应是否回传 `uuid`。
 
 ### 现象
 
@@ -155,7 +167,9 @@ un_pack(compressed_path.to_str().unwrap(), original_path.to_str().unwrap())
 
 ## I-06 函数返回值不表示业务成败
 
-**严重程度**：中 ｜ **状态**：未修复 ｜ **位置**：`src/utils/cjson.rs:26-45`
+**严重程度**：中 ｜ **状态**：待讨论 ｜ **位置**：`src/utils/cjson.rs::write_json_out`
+
+**说明**：业务错误是否改为非 0 返回（会影响现有宿主对返回值的判断）。
 
 ### 现象
 
@@ -173,7 +187,9 @@ C 调用方按惯例「0 即成功」，极易把错误当成功；文档已注�
 
 ## I-07 MD5 全量读入内存，大文件可能 OOM
 
-**严重程度**：中 ｜ **状态**：未修复 ｜ **位置**：`src/utils/md.rs:6`
+**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`src/utils/md.rs::compute_md5`
+
+**说明**：`compute_md5` 改为 64 KiB 分块读取，内存占用与文件大小无关。
 
 ### 现象
 
@@ -195,7 +211,9 @@ let bytes = fs::read(path)?;
 
 ## I-08 `end_time` 更新不持久化，字段名与语义不符
 
-**严重程度**：中 ｜ **状态**：未修复 ｜ **位置**：`src/ffi/info.rs:57`
+**严重程度**：中 ｜ **状态**：待讨论 ｜ **位置**：`src/ffi/info.rs::post_get_fil`
+
+**说明**：`end_time` 是写回 `info.json`、改名 `last_access_time`，还是保持只读语义。
 
 ### 现象
 
@@ -213,7 +231,9 @@ let bytes = fs::read(path)?;
 
 ## I-09 存储根目录依赖进程工作目录，无配置入口
 
-**严重程度**：中 ｜ **状态**：未修复 ｜ **位置**：`src/ffi/types.rs:14`
+**严重程度**：中 ｜ **状态**：待讨论 ｜ **位置**：`src/ffi/types.rs::STORAGE_DIR`
+
+**说明**：是否新增 `ostfil_init(root)` 或用环境变量配置存储根目录。
 
 ### 现象
 
@@ -231,7 +251,9 @@ let bytes = fs::read(path)?;
 
 ## I-10 无并发控制，非原子写入
 
-**严重程度**：中 ｜ **状态**：未修复 ｜ **位置**：`src/utils/info.rs:20`、`src/ffi/delete.rs:37-39`
+**严重程度**：中 ｜ **状态**：部分修复 ｜ **位置**：`src/ffi/delete.rs::post_delete_file`、`src/utils/info.rs::save_info`
+
+**说明**：已修复：删除去掉前置 `exists`，按 `NotFound` 返回 `400104`。待讨论：是否加锁、`info.json` 是否改为临时文件 + rename 原子写（跨平台取舍）。
 
 ### 现象
 
@@ -251,7 +273,9 @@ let bytes = fs::read(path)?;
 
 ## I-11 没有任何测试
 
-**严重程度**：中 ｜ **状态**：未修复 ｜ **位置**：全仓库
+**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`tests/`
+
+**说明**：新增 `tests/ffi.rs`、`tests/pack.rs` 共 7 个集成测试，`cargo test` 通过。
 
 ### 现象
 
@@ -269,7 +293,9 @@ I-02、I-03 这类「编译通过、运行错误」的缺陷无法被发现；�
 
 ## I-12 FFI 边界存在 `unwrap()`，panic 会终止宿主进程
 
-**严重程度**：中 ｜ **状态**：未修复 ｜ **位置**：`src/ffi/storage.rs:72-73`、`src/ffi/storage.rs:96`、`src/ffi/info.rs:63-68`
+**严重程度**：中 ｜ **状态**：已修复 ｜ **位置**：`src/ffi/storage.rs::post_storage`、`src/ffi/info.rs::post_get_fil`
+
+**说明**：路径转换改为 `let ... else` 返回 `500106`；`src/` 中已无 `unwrap()` / `expect()`。
 
 ### 现象
 
@@ -293,7 +319,9 @@ original_path.to_str().unwrap()
 
 ## I-13 `file_path` 不校验是否为普通文件
 
-**严重程度**：低 ｜ **状态**：未修复 ｜ **位置**：`src/ffi/storage.rs:36-39`
+**严重程度**：低 ｜ **状态**：已修复 ｜ **位置**：`src/ffi/storage.rs::post_storage`
+
+**说明**：增加 `is_file()` 校验，非普通文件返回 `400106`。
 
 ### 现象
 
@@ -311,7 +339,9 @@ original_path.to_str().unwrap()
 
 ## I-14 `size` 吞掉错误，与 0 字节文件不可区分
 
-**严重程度**：低 ｜ **状态**：未修复 ｜ **位置**：`src/ffi/storage.rs:58-61`
+**严重程度**：低 ｜ **状态**：已修复 ｜ **位置**：`src/ffi/storage.rs::post_storage`
+
+**说明**：元数据读取失败返回 `500105`，不再静默记为 `0`。
 
 ### 现象
 
@@ -336,7 +366,9 @@ let size = match fs::metadata(file_path) {
 
 ## I-15 冗余依赖 `libc`、`once_cell`
 
-**严重程度**：低 ｜ **状态**：未修复 ｜ **位置**：`Cargo.toml:15-16`
+**严重程度**：低 ｜ **状态**：已修复 ｜ **位置**：`Cargo.toml`
+
+**说明**：移除 `libc`、`once_cell`、`serde_derive`。
 
 ### 现象
 
@@ -354,7 +386,9 @@ let size = match fs::metadata(file_path) {
 
 ## I-16 输出缓冲区上限 65536 不可协商
 
-**严重程度**：低 ｜ **状态**：未修复 ｜ **位置**：`src/utils/cjson.rs:14-16`
+**严重程度**：低 ｜ **状态**：待讨论 ｜ **位置**：`src/utils/cjson.rs::write_json_out`
+
+**说明**：是否需要可协商的输出缓冲（新增查询接口或带长度参数的调用约定）。
 
 ### 现象
 
@@ -376,7 +410,9 @@ if bytes.len() >= 65536 { return -2; }
 
 ## I-17 `content_type` 覆盖范围有限
 
-**严重程度**：低 ｜ **状态**：未修复 ｜ **位置**：`src/ffi/storage.rs:112`
+**严重程度**：低 ｜ **状态**：已修复 ｜ **位置**：`src/ffi/storage.rs::content_type_for`
+
+**说明**：映射表扩充到 30+ 扩展名（文本、图片、音视频、字体、压缩包等）。
 
 ### 现象
 
@@ -394,7 +430,9 @@ if bytes.len() >= 65536 { return -2; }
 
 ## I-18 发布流程存在不可达分支，未传 `DYTES_S3_ENDPOINT`
 
-**严重程度**：低 ｜ **状态**：未修复 ｜ **位置**：`.github/workflows/dytes-release.yml:35-41`、`:55-59`
+**严重程度**：低 ｜ **状态**：待讨论 ｜ **位置**：`.github/workflows/dytes-release.yml`
+
+**说明**：`DYTES_S3_ENDPOINT` 是否显式传入；workflow 的 cmake/deno 分支是删除还是作为模板保留。
 
 ### 现象
 

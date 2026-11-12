@@ -1,4 +1,4 @@
-use crate::ffi::types::{Ostfil, STORAGE_DIR};
+use crate::ffi::types::{is_safe_uuid, Ostfil, STORAGE_DIR};
 use crate::utils::cjson::{write_error, write_success};
 use crate::utils::info::get_info;
 use crate::utils::pack::un_pack;
@@ -31,13 +31,21 @@ pub extern "C" fn post_get_fil(json_in: *const c_char, json_out: *mut c_char) ->
         Err(e) => return write_error(json_out, 400102, &format!("invalid json: {}", e)),
     };
 
+    if !is_safe_uuid(&req.uuid) {
+        return write_error(json_out, 400105, "invalid uuid");
+    }
+
     let uuid_dir = Path::new(STORAGE_DIR).join(&req.uuid);
     if !uuid_dir.exists() {
         return write_error(json_out, 400104, "uuid directory does not exist");
     }
 
+    let Some(dir_str) = uuid_dir.to_str() else {
+        return write_error(json_out, 500106, "storage path is not valid utf-8");
+    };
+
     // 读取 info.json（使用 utils::info::get_info）
-    let content = match get_info(uuid_dir.to_str().unwrap()) {
+    let content = match get_info(dir_str) {
         Ok(c) => c,
         Err(e) => {
             return write_error(
@@ -58,12 +66,22 @@ pub extern "C" fn post_get_fil(json_in: *const c_char, json_out: *mut c_char) ->
 
     // 检查 original 是否存在，如果不存在，则解压
     let original_path = uuid_dir.join("original");
-    let compressed_path = uuid_dir.join("original.z");
+    let compressed_path = {
+        let current = uuid_dir.join("original.z");
+        // 兼容旧布局：早期版本的压缩文件名为 original.z.z
+        if current.exists() {
+            current
+        } else {
+            uuid_dir.join("original.z.z")
+        }
+    };
     if !original_path.exists() && compressed_path.exists() {
-        if let Err(e) = un_pack(
-            compressed_path.to_str().unwrap(),
-            original_path.to_str().unwrap(),
-        ) {
+        let (Some(compressed_str), Some(original_str)) =
+            (compressed_path.to_str(), original_path.to_str())
+        else {
+            return write_error(json_out, 500106, "storage path is not valid utf-8");
+        };
+        if let Err(e) = un_pack(compressed_str, original_str) {
             return write_error(json_out, 500202, &format!("decompression failed: {}", e));
         }
     }

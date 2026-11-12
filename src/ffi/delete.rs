@@ -1,9 +1,10 @@
-use crate::ffi::types::STORAGE_DIR;
+use crate::ffi::types::{is_safe_uuid, STORAGE_DIR};
 use crate::utils::cjson::{write_error, write_success};
 use serde::Deserialize;
 use serde_json::json;
 use std::ffi::{c_char, c_int, CStr};
 use std::fs;
+use std::io::ErrorKind;
 use std::path::Path;
 
 #[unsafe(no_mangle)]
@@ -29,16 +30,18 @@ pub extern "C" fn post_delete_file(json_in: *const c_char, json_out: *mut c_char
         Err(e) => return write_error(json_out, 400102, &format!("invalid json: {}", e)),
     };
 
+    if !is_safe_uuid(&req.uuid) {
+        return write_error(json_out, 400105, "invalid uuid");
+    }
+
     let uuid_dir = Path::new(STORAGE_DIR).join(&req.uuid);
 
-    if !uuid_dir.exists() {
-        return write_error(json_out, 400104, "uuid directory does not exist");
+    // 直接删除，按错误类型区分「不存在」，避免 exists + remove 之间的竞态
+    match fs::remove_dir_all(&uuid_dir) {
+        Ok(()) => write_success(json_out, "success", json!({})),
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            write_error(json_out, 400104, "uuid directory does not exist")
+        }
+        Err(e) => write_error(json_out, 500203, &format!("delete failed: {}", e)),
     }
-
-    // ✅ 删除目录
-    if let Err(e) = fs::remove_dir_all(&uuid_dir) {
-        return write_error(json_out, 500203, &format!("delete failed: {}", e));
-    }
-
-    write_success(json_out, "success", json!({}))
 }

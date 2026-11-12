@@ -67,7 +67,7 @@ int post_delete_file(const char *json_in, char *json_out);
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `uuid` | string | 存储目录名，v4 UUID |
-| `size` | u64 | 原始文件字节数；读取元数据失败时为 `0` |
+| `size` | u64 | 原始文件字节数 |
 | `extra` | string | 扩展名，不含 `.`，取 `Path::extension()` 原样（大小写保留）；无扩展名为 `""` |
 | `end_time` | u64 | Unix 时间戳（秒，UTC）。写入时是入库时间，每次 `post_get_fil` 刷新为最近读取时间 |
 | `md5` | string | 原文件 MD5，小写十六进制 32 字符 |
@@ -81,14 +81,33 @@ int post_delete_file(const char *json_in, char *json_out);
 | `json` | `application/json` |
 | `html` / `htm` | `text/html` |
 | `css` | `text/css` |
-| `js` | `application/javascript` |
+| `js` / `mjs` | `application/javascript` |
+| `ts` | `application/typescript` |
+| `csv` | `text/csv` |
+| `xml` | `application/xml` |
+| `yaml` / `yml` | `application/yaml` |
+| `toml` | `application/toml` |
 | `png` | `image/png` |
 | `jpg` / `jpeg` | `image/jpeg` |
 | `gif` | `image/gif` |
 | `webp` | `image/webp` |
 | `svg` | `image/svg+xml` |
+| `bmp` | `image/bmp` |
+| `ico` | `image/x-icon` |
+| `mp3` | `audio/mpeg` |
+| `wav` | `audio/wav` |
+| `ogg` | `audio/ogg` |
+| `mp4` | `video/mp4` |
+| `webm` | `video/webm` |
+| `woff` | `font/woff` |
+| `woff2` | `font/woff2` |
+| `ttf` | `font/ttf` |
+| `otf` | `font/otf` |
 | `pdf` | `application/pdf` |
 | `zip` | `application/zip` |
+| `gz` | `application/gzip` |
+| `tar` | `application/x-tar` |
+| `7z` | `application/x-7z-compressed` |
 | 其他 | `application/octet-stream` |
 
 ## post_storage
@@ -106,12 +125,15 @@ int post_delete_file(const char *json_in, char *json_out);
 行为：
 
 1. 校验 `json_in`、JSON 与 `file_path` 是否存在（不存在返回 `400103`）。
-2. 生成 v4 UUID，创建 `./storage/<uuid>/`（失败 `500100`）。
-3. 拷贝源文件到 `<uuid>/original`（失败 `500101`）。
-4. gzip 压缩（失败 `500102`），详见 [存储布局](./storage.md)。
-5. 计算 MD5（失败 `500104`）、读取大小、推断 `content_type`。
-6. 写 `<uuid>/info.json`（失败 `500103`）。
-7. 返回 `Ostfil` 对象，`msg` 为 `success`。
+2. 要求 `file_path` 是普通文件：元数据读取失败 `500105`，目录/设备等返回 `400106`。
+3. 生成 v4 UUID，创建 `./storage/<uuid>/`（失败 `500100`）。
+4. 拷贝源文件到 `<uuid>/original`（失败 `500101`）。
+5. gzip 压缩到 `<uuid>/original.z`（失败 `500102`），详见 [存储布局](./storage.md)。
+6. 计算 MD5（失败 `500104`）、读取大小、推断 `content_type`。
+7. 写 `<uuid>/info.json`（失败 `500103`）。
+8. 返回 `Ostfil` 对象，`msg` 为 `success`。
+
+第 3 步之后的失败会先清理本次创建的目录，不留孤儿目录。
 
 成功响应：
 
@@ -133,14 +155,14 @@ int post_delete_file(const char *json_in, char *json_out);
 
 行为：
 
-1. 校验入参；目录不存在返回 `400104`。
+1. 校验入参，`uuid` 格式非法返回 `400105`；目录不存在返回 `400104`。
 2. 读取 `<uuid>/info.json`（失败 `500200`，内容不是合法 JSON 返回 `500201`）。
 3. 把 `end_time` 刷新为当前 Unix 时间（仅返回内存中的值，**不回写** `info.json`）。
-4. 若 `original` 不存在而 `original.z` 存在，尝试解压还原（失败 `500202`）。
+4. 若 `original` 不存在，取 `original.z`（缺失时回退旧布局 `original.z.z`）解压还原（失败 `500202`）。
 5. 旧记录兼容：`content_type` 为空时按 `extra` 重新推断；`md5` 为空且 `original` 存在时重新计算。
 6. 返回 `Ostfil` 对象。
 
-注意：`uuid` 不做格式校验，直接拼接为目录名。
+`uuid` 会先校验为 36 位 UUID 形式（十六进制 + 连字符），`../`、绝对路径等输入返回 `400105`，不会越出 `storage/`。
 
 ## post_delete_file
 
@@ -152,7 +174,7 @@ int post_delete_file(const char *json_in, char *json_out);
 {"uuid":"3f0c1a52-...-9d0e"}
 ```
 
-行为：目录不存在返回 `400104`；存在则 `remove_dir_all` 删除整个 `storage/<uuid>/`（失败 `500203`）。
+行为：先校验 `uuid` 格式（非法返回 `400105`），随后 `remove_dir_all` 删除整个 `storage/<uuid>/`；目录不存在返回 `400104`，其他失败返回 `500203`。
 
 成功响应：
 

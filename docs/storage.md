@@ -16,17 +16,19 @@ pub const STORAGE_DIR: &str = "./storage";
 ./storage/
 └── <uuid>/
     ├── original      # 源文件副本（未删除）
-    ├── original.z.z  # gzip 压缩产物（当前实现）
+    ├── original.z    # gzip 压缩产物
     └── info.json     # 元数据（Ostfil 的 pretty JSON）
 ```
 
 | 路径 | 产生者 | 说明 |
 | --- | --- | --- |
-| `<uuid>/original` | `post_storage` | `fs::copy` 源文件，保留原始扩展名之外的字节内容 |
-| `<uuid>/original.z.z` | `post_storage` | gzip（最佳压缩级别）后的副本 |
+| `<uuid>/original` | `post_storage` | `fs::copy` 源文件 |
+| `<uuid>/original.z` | `post_storage` | gzip（最佳压缩级别）后的副本 |
 | `<uuid>/info.json` | `post_storage` | `serde_json::to_string_pretty` 输出的 `Ostfil` |
 
-`<uuid>` 为 v4 UUID 的字符串形式（36 字符，带连字符）。
+`<uuid>` 为 v4 UUID 的字符串形式（36 字符，带连字符）。读取与删除都会先校验其格式（`400105`），因此不存在 `../` 或绝对路径逃逸。
+
+早期版本（≤ 1.0.4）的压缩文件名是 `original.z.z`；`post_get_fil` 在 `original.z` 不存在时会回退使用 `original.z.z`，旧数据无需迁移。
 
 ## info.json
 
@@ -47,37 +49,40 @@ pub const STORAGE_DIR: &str = "./storage";
 
 ## 写入流程（post_storage）
 
-1. 校验 `json_in`、UTF-8、JSON、`file_path` 是否存在。
-2. 生成 UUID，`create_dir_all(./storage/<uuid>)` → 失败 `500100`。
-3. `extra` 取 `Path::extension()`，无扩展名为空串；`size` 取 `fs::metadata().len()`，失败按 `0`。
-4. 拷贝源文件到 `original` → 失败 `500101`。
-5. `do_pack(original, original.z)` → 失败 `500102`。
-6. `compute_md5(original)` → 失败 `500104`；按 `extra` 推断 `content_type`。
-7. 组装 `Ostfil`，`end_time` 取当前 UTC 秒级时间戳。
-8. 写 `info.json` → 失败 `500103`。
-9. 返回 `Ostfil`。
+1. 校验 `json_in`、UTF-8、JSON、`file_path` 是否存在（`400103`）。
+2. 读取元数据并要求是普通文件：元数据读取失败 `500105`，目录/设备等 `400106`；`size` 取 `metadata.len()`。
+3. 生成 UUID，`create_dir_all(./storage/<uuid>)` → 失败 `500100`。
+4. `extra` 取 `Path::extension()`，无扩展名为空串。
+5. 拷贝源文件到 `original` → 失败 `500101`。
+6. `do_pack(original, original.z)` → 失败 `500102`。
+7. `compute_md5(original)`（分块读取）→ 失败 `500104`；按 `extra` 推断 `content_type`。
+8. 组装 `Ostfil`，`end_time` 取当前 UTC 秒级时间戳。
+9. 写 `info.json` → 失败 `500103`。
+10. 返回 `Ostfil`。
 
-`original` 在压缩后**不会删除**，请求结束后目录内同时保留原文与压缩副本。
+第 3 步之后任意一步失败都会先删除本次创建的 `storage/<uuid>/` 再返回错误，不留孤儿目录。
+
+`original` 在压缩后**不会删除**，请求结束后目录内同时保留原文与压缩副本（见 [已知问题](./issues.md) I-04）。
 
 ## 读取流程（post_get_fil）
 
-1. 校验入参；`./storage/<uuid>` 不存在 → `400104`。
+1. 校验入参，`uuid` 格式非法 → `400105`；`./storage/<uuid>` 不存在 → `400104`。
 2. 读 `info.json` → 读失败 `500200`，解析失败 `500201`。
-3. 内存中把 `end_time` 刷新为当前时间，**不回写**文件。
-4. 若 `original` 不存在且 `original.z` 存在，尝试解压（失败 `500202`）。
+3. 内存中把 `end_time` 刷新为当前时间，**不回写**文件（见 [已知问题](./issues.md) I-08）。
+4. 若 `original` 不存在，取 `original.z`（不存在则回退旧布局 `original.z.z`）解压还原，失败 `500202`。
 5. 兼容旧记录：`content_type` 为空则按 `extra` 推断；`md5` 为空且 `original` 存在则补算。
 6. 返回 `Ostfil`。
 
 ## 删除流程（post_delete_file）
 
-`./storage/<uuid>` 不存在 → `400104`；否则 `remove_dir_all` 整目录 → 失败 `500203`。
+校验 `uuid` 格式（`400105`），随后直接 `remove_dir_all`：目录不存在（`NotFound`）→ `400104`，其他失败 → `500203`。不再先 `exists` 再删除，避免两步之间的竞态。
 
-## 当前实现的已知问题
+## 已修复的历史问题
 
-以下行为由代码现状决定，宿主侧不应依赖，后续修复时以代码为准：
+以下问题在 2026-11-12 的修复中已解决，记录在此便于对照旧数据：
 
-1. **压缩文件名多一层 `.z`**：`src/utils/pack.rs` 的 `do_pack(path, save_path)` 内部执行 `format!("{}.z", save_path)`，而 `storage.rs` 传入的 `save_path` 已是 `original.z`，因此实际产物是 `original.z.z`，`original.z` 并不存在。
-2. **解压分支不会生效**：`info.rs` 在 `original` 缺失时判断并调用 `un_pack(original.z, original)`；但 `un_pack(path, extra)` 内部又拼成 `<path>.z` 与 `<path>.<extra>`，与调用方语义不匹配。加之 `original` 从不删除，该分支在正常流程下不可达。
-3. **磁盘占用翻倍**：原文与压缩副本同时保留，`size` 仍记录原始大小。
-4. **无并发控制**：同一 `uuid` 的并发读写、删除没有锁，依赖宿主串行化。
-5. **不做路径校验**：`file_path` 与 `uuid` 均原样拼接，`uuid` 不做格式检查；调用方需保证 `uuid` 来自本库返回且不含路径分隔符。
+1. 压缩产物曾多一层 `.z`（实际为 `original.z.z`），现已改为 `original.z`；
+2. `un_pack` 的参数语义曾与调用方不一致，导致解压必然失败，现已统一为 `(src_path, dst_path)`；
+3. `uuid` 与 `file_path` 曾不做校验，现已分别返回 `400105`、`400106`。
+
+仍在讨论的行为（是否删除 `original`、`end_time` 语义、存储根目录配置、并发锁与原子写等）见 [已知问题](./issues.md)。

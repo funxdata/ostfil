@@ -5,7 +5,7 @@
 - Rust stable（`#[unsafe(no_mangle)]` 语法需要 1.82 及以上）
 - 无系统级原生依赖；`flate2` 默认使用纯 Rust 后端
 
-依赖（`Cargo.toml`）：`chrono`、`flate2`、`libc`、`once_cell`、`serde`、`serde_derive`、`serde_json`、`uuid`（`v4`）、`md5`。
+依赖（`Cargo.toml`）：`chrono`、`flate2`、`serde`（`derive`）、`serde_json`、`uuid`（`v4`）、`md5`。
 
 ## 构建
 
@@ -13,7 +13,7 @@
 cargo build --release
 ```
 
-`[lib]` 声明了 `crate-type = ["cdylib"]`、`name = "ostfil"`，因此只产出动态库：
+`[lib]` 声明了 `crate-type = ["cdylib", "rlib"]`、`name = "ostfil"`：`cdylib` 产出动态库，`rlib` 仅用于让 `tests/` 下的集成测试链接本 crate。
 
 | 平台 | 产物 |
 | --- | --- |
@@ -21,7 +21,13 @@ cargo build --release
 | Linux | `target/release/libostfil.so` |
 | macOS | `target/release/libostfil.dylib` |
 
-本仓库没有单元测试与集成测试；验证以构建通过与宿主侧调用为主。
+测试与验证：
+
+```bash
+cargo test
+```
+
+测试全部位于 `tests/`（集成测试），覆盖 `storage` → `get` → `delete` 全链路、旧布局 `original.z.z` 还原、`uuid`/`file_path` 非法输入以及 `do_pack`/`un_pack` 往返。
 
 ## 包元信息
 

@@ -291,11 +291,8 @@ version = "1.0.4"
 dependencies = [
  "chrono",
  "flate2",
- "libc",
  "md5",
- "once_cell",
  "serde",
- "serde_derive",
  "serde_json",
  "uuid",
 ]
