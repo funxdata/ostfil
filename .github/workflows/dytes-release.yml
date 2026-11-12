@@ -110,10 +110,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # CDN 文件名取自 dytes 0.2.x 的 platform-exports（.bin / .app）
           case "${{ runner.os }}" in
             Windows) asset="dytes-windows.exe"; bin="dytes.exe"; platform="windows/dytes.exe" ;;
-            Linux)   asset="dytes-linux";       bin="dytes";       platform="linux/dytes" ;;
-            macOS)   asset="dytes-macos";       bin="dytes";       platform="macos/dytes" ;;
+            Linux)   asset="dytes-linux";       bin="dytes";       platform="linux/dytes.bin" ;;
+            macOS)   asset="dytes-macos";       bin="dytes";       platform="macos/dytes.app" ;;
             *) echo "unsupported runner: ${{ runner.os }}" >&2; exit 1 ;;
           esac
           bin_dir="${RUNNER_TEMP}/dytes-bin"
