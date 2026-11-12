@@ -64,7 +64,7 @@ pub const STORAGE_DIR: &str = "./storage";
 
 第 3 步之后任意一步失败都会先删除本次创建的 `storage/<uuid>/` 再返回错误，不留孤儿目录。
 
-`original` 在压缩后**不会删除**，请求结束后目录内同时保留原文与压缩副本（见 [已知问题](./issues.md) I-04）。
+`original` 在压缩后**不会删除**，请求结束后目录内同时保留原文与压缩副本。是否删除原文由后续专门的判断方法决定（当前尚未实现），`original.z` 已按此预留。
 
 ## 读取流程（post_get_fil）
 
@@ -87,4 +87,4 @@ pub const STORAGE_DIR: &str = "./storage";
 2. `un_pack` 的参数语义曾与调用方不一致，导致解压必然失败，现已统一为 `(src_path, dst_path)`；
 3. `uuid` 与 `file_path` 曾不做校验，现已分别返回 `400105`、`400106`。
 
-仍在讨论的行为（是否删除 `original`、`end_time` 语义、存储根目录配置、并发锁与原子写等）见 [已知问题](./issues.md)。
+仍在讨论的行为（`end_time` 语义、存储根目录配置、并发锁与原子写等）见 [已知问题](./issues.md)。
