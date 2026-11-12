@@ -53,7 +53,7 @@ cargo test
 
 ## 版本管理
 
-发布前需同步三处版本号，`prepare` job 会校验 tag 与 `dytes.json` 一致：
+发布前需同步三处版本号，`prepare` job 会校验 tag、`Cargo.toml` 与 `dytes.json` 一致：
 
 1. `dytes.json` 的 `version`
 2. `Cargo.toml` 的 `[package] version`
@@ -74,9 +74,8 @@ tag 必须形如 `vX.Y.Z`，且去掉前缀后与 `dytes.json` 版本完全相�
 
 ### prepare（ubuntu-latest）
 
-1. 读取 `dytes.json` 版本，与 tag 比对。
+1. 读取 `dytes.json` 版本，与 tag 比对；再与 `Cargo.toml` 的 `[package] version` 比对，任一不一致即失败。
 2. 从 `platform-exports` 的键生成平台矩阵。
-3. 探测构建方式：存在 `CMakeLists.txt` 用 cmake，否则存在 `Cargo.toml` 用 cargo，都无则 deno。当前仓库为 `cargo`。
 
 ### publish（每平台一个 runner，串行）
 
@@ -91,15 +90,9 @@ tag 必须形如 `vX.Y.Z`，且去掉前缀后与 `dytes.json` 版本完全相�
 
 ### 凭据
 
-job 级环境变量，由仓库 Secrets 提供：
+workflow **不传任何 S3 配置**。dytes 在用户配置缺失时会回退到编译期内置凭据与默认 endpoint，因此 `database`、`kv_lib`、`designdb`、`cyctron`、`sysinfo` 等仓库的发布流程同样没有 `DYTES_S3_*` 环境变量。
 
-| 环境变量 | Secret |
-| --- | --- |
-| `DYTES_S3_BUCKET` | `UPYUN_BUCKET` |
-| `DYTES_S3_ACCESS_KEY` | `UPYUN_API_KEY` |
-| `DYTES_S3_SECRET_KEY` | `UPYUN_API_SECRET` |
-
-`DYTES_S3_ENDPOINT` 未显式传递，使用 dytes 内置默认值。若默认 endpoint 不是 UpYun 的 `https://s3.api.upyun.com`，需在 workflow 的 job `env` 中补上该变量。
+需要覆盖时，可在 job `env` 中显式设置 `DYTES_S3_ENDPOINT` / `DYTES_S3_BUCKET` / `DYTES_S3_ACCESS_KEY` / `DYTES_S3_SECRET_KEY`，优先级为「环境变量 > 用户配置 > 内置默认值」。
 
 ## 已移除的工作流
 
